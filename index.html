@@ -50,6 +50,8 @@ header{background:linear-gradient(180deg,#171c26,#131720);border-bottom:1px soli
 #b-plans:hover,#b-out:hover{background:#93c5fd;border-color:#60a5fa}
 #prev,#next{background:#fef08a;color:#854d0e;border-color:#fde047}
 #prev:hover,#next:hover{background:#fde047;border-color:#facc15}
+#undo:not(:disabled){background:#fef08a;color:#854d0e;border-color:#fde047}
+#undo:not(:disabled):hover{background:#fde047;border-color:#facc15}
 .chip{display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border-radius:999px;
   background:#101420;border:1px solid var(--line);color:var(--muted);font-size:12px;max-width:100%;overflow:hidden}
 .chip i{font-style:normal;color:#6f7a8e}
@@ -98,6 +100,7 @@ body > :not(#rain):not(.ov){position:relative;z-index:1}
 .bar-fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#2fbf7f,#4fe0a0);
   box-shadow:0 0 14px rgba(79,224,160,.5);transition:width .3s ease}
 .bar-fill.err{background:var(--danger);box-shadow:none}
+.bar-fill.warn{background:linear-gradient(90deg,#f59e0b,#fbbf24);box-shadow:0 0 14px rgba(245,158,11,.45)}
 .card-row{display:flex;justify-content:space-between;gap:10px;margin-top:12px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .card-row b{color:var(--ok);font-weight:650;font-size:15px}
 .card-foot{margin-top:18px;display:flex;justify-content:flex-end;gap:8px}
@@ -174,6 +177,7 @@ body > :not(#rain):not(.ov){position:relative;z-index:1}
     <button class="btn" id="fit" title="Fit page to width (0)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Fit</button>
     <div class="spacer"></div>
     <button class="btn" id="undo" title="Undo the last change (up to 5). Shortcut: Ctrl+Z" disabled><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Undo</button>
+    <button class="btn" id="reset" title="Clear all choices and start over"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>Clear and Refresh</button>
     <button class="btn primary" id="apply"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Apply redactions</button>
   </div>
   <div class="row" style="margin-top:8px">
@@ -181,7 +185,6 @@ body > :not(#rain):not(.ov){position:relative;z-index:1}
     <div class="chip"><i class="chip-dot" id="dot-out"></i><i>Output</i><span id="p-out">not set</span></div>
     <div class="spacer"></div>
     <button class="btn icon" id="help" title="About this tool"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6"/><path d="M12 17h.01"/></svg></button>
-    <button class="btn" id="reset" title="Clear all choices and start over"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>Clear and Refresh</button>
   </div>
 </header>
 
@@ -212,9 +215,9 @@ body > :not(#rain):not(.ov){position:relative;z-index:1}
     <ol class="steps">
       <li><b>Choose the plans.</b> Click Choose Plans to be Redacted and pick the folder that holds the PDFs.</li>
       <li><b>Mark the seals.</b> Click and drag on a page to place a black box. Select a box and press Delete to remove it. Hold Ctrl and scroll the mouse wheel to zoom.</li>
-      <li><b>Apply redactions.</b> Pause OneDrive, click Apply redactions, and confirm. Redacted copies are saved to a new Redacted Documents folder, along with a report.</li>
+      <li><b>Apply redactions.</b> Pause OneDrive, click Apply redactions, and confirm. Redacted copies are saved as new files in the output location you choose, inside a new Redacted Documents folder, along with a report.</li>
     </ol>
-    <p class="about-p">Your original files are never changed. A person must still review every page before the plans are released.</p>
+    <p class="about-p"><b>Your original PDFs are left unaffected.</b> The redacted copies are new files saved in the output location you choose, so the originals stay exactly as they are. A person must still review every page before the plans are released.</p>
     <div class="card-foot">
       <label class="ack"><input type="checkbox" id="about-hide"> Don't show this again</label>
       <button class="btn primary" id="about-ok">Got it</button>
@@ -230,6 +233,14 @@ body > :not(#rain):not(.ov){position:relative;z-index:1}
       <button class="btn" id="reset-no">Cancel</button>
       <button class="btn solid-danger" id="reset-yes">Clear and Refresh</button>
     </div>
+  </div>
+</div>
+
+<div id="dup" class="ov" hidden>
+  <div class="card">
+    <div class="card-title" id="dup-title"></div>
+    <div class="card-file" id="dup-text" style="white-space:normal;line-height:1.6;margin-bottom:0"></div>
+    <div class="card-foot" id="dup-foot"></div>
   </div>
 </div>
 
@@ -262,6 +273,7 @@ body > :not(#rain):not(.ov){position:relative;z-index:1}
     </div>
     <div class="ov-list" id="ov-list" hidden></div>
     <div class="card-foot">
+      <button class="btn" id="ov-retry" hidden>Retry failed files</button>
       <button class="btn primary" id="ov-close" hidden>Close</button>
     </div>
   </div>
@@ -356,12 +368,41 @@ function progStart(total) {
   $('ov-close').hidden = true;
   $('ov-list').hidden = true;
   $('ov-list').innerHTML = '';
+  $('ov-retry').hidden = true;
   ov.hidden = false;
   progDraw();
   clearInterval(progTimer);
   progTimer = setInterval(progDraw, 500);
 }
 function progLabel(t) { if (prog.active) $('ov-file').textContent = t; }
+function progSet(n) { prog.done = n; prog.stamps = []; progDraw(); }
+function progPartial(name, failures) {
+  prog.active = false;
+  clearInterval(progTimer);
+  progDraw();
+  fill.className = 'bar-fill warn';
+  fill.style.width = '100%';
+  const doneFiles = files.length - failures.length;
+  $('ov-title').textContent = `Finished, but ${failures.length} file(s) need attention`;
+  $('ov-title').className = 'card-title';
+  $('ov-file').textContent = `Saved to "${name}"`;
+  $('ov-eta').textContent = `${doneFiles} of ${files.length} files redacted`;
+  const list = $('ov-list');
+  list.innerHTML = '';
+  list.hidden = false;
+  for (const f of failures) {
+    const row = document.createElement('div');
+    row.className = 'ov-row';
+    const label = document.createElement('span');
+    label.textContent = files[f.fi].rel + ': ' + f.message;
+    label.title = label.textContent;
+    row.appendChild(label);
+    list.appendChild(row);
+  }
+  $('ov-retry').hidden = false;
+  $('ov-close').hidden = false;
+  msg(`Finished with ${failures.length} file(s) that need attention. The rest are saved to "${name}".`);
+}
 function progTick() {
   if (!prog.active) return;
   prog.done++;
@@ -393,6 +434,7 @@ function progFail(e) {
   msg('Redaction stopped: ' + e.message);
 }
 $('ov-close').onclick = () => { ov.hidden = true; };
+$('ov-retry').onclick = retryFailed;
 
 // ---- Welcome window ----
 $('help').onclick = () => { $('about').hidden = false; };
@@ -756,7 +798,7 @@ window.addEventListener('mouseup', () => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT' || prog.active || !$('pre').hidden || !$('about').hidden || !$('reset-ov').hidden) return;
+  if (e.target.tagName === 'INPUT' || prog.active || !$('pre').hidden || !$('about').hidden || !$('reset-ov').hidden || !$('dup').hidden) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undoLast(); }
   if (e.key === 'ArrowRight') { e.preventDefault(); go(curIdx + 1); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); go(curIdx - 1); }
@@ -835,10 +877,80 @@ async function redactPdf(bytes, boxesByPage, trainDir, stem, rel) {
   return { bytes: await out.save(), problems, numPages, boxCount };
 }
 
+const RETRY_DELAY_MS = 1500;
+const ATTEMPTS_PER_FILE = 3;
+let runCtx = null;        // the run in progress or just finished: folders and log rows
+let lastFailures = [];    // [{fi, message}] files that still need attention
+const LOG_HEADER = ['timestamp', 'source', 'source_sha256', 'output', 'output_sha256', 'pages', 'boxes', 'status', 'problems'];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function csvCell(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }
+
+// Redacts one file and writes its output. Throws if the file cannot be processed.
+async function processFile(fi, runDir, trainDir, runStamp, ts, logRows) {
+  const f = files[fi];
+  const stem = stemOf(f.rel);
+  const bytes = new Uint8Array(await (await f.handle.getFile()).arrayBuffer());
+  const srcDigest = await sha256Hex(bytes);
+  const boxesByPage = {};
+  const nPages = pages.filter(p => p.fi === fi).length;
+  for (let pno = 1; pno <= nPages; pno++) {
+    const e = review.get(f.rel + '|' + pno);
+    if (e && e.boxes.length) boxesByPage[pno - 1] = e.boxes;
+  }
+  const result = await redactPdf(bytes, boxesByPage, trainDir, runStamp + '_' + stem, f.rel);
+  const status = result.problems.length ? 'FAILED_VERIFICATION' : 'VERIFIED';
+  await writeFile(runDir, stem + '_REDACTED.pdf', result.bytes);
+  const outDigest = await sha256Hex(result.bytes);
+  const record = {
+    source: f.rel, sha256: srcDigest, pages: result.numPages,
+    redacted_at: ts, output: stem + '_REDACTED.pdf', output_sha256: outDigest,
+    boxes: boxesByPage, boxes_applied: result.boxCount,
+    verification: status, problems: result.problems,
+  };
+  await writeFile(runDir, stem + '_REDACTION_RECORD.json', JSON.stringify(record, null, 2));
+  logRows.push([ts, f.rel, srcDigest, stem + '_REDACTED.pdf', outDigest, result.numPages,
+    result.boxCount, status, result.problems.join('; ')].map(csvCell));
+  return status;
+}
+
+// Runs a list of files. A file that keeps failing is recorded and skipped, so the run carries on.
+async function runFiles(fiList, runDir, trainDir, runStamp, logRows) {
+  const ts = new Date().toISOString();
+  const failures = [];
+  for (const fi of fiList) {
+    const start = prog.done;
+    const nPages = pages.filter(p => p.fi === fi).length;
+    let lastErr = null, ok = false;
+    for (let attempt = 1; attempt <= ATTEMPTS_PER_FILE && !ok; attempt++) {
+      try {
+        progSet(start);   // a retry starts this file's progress over
+        progLabel(files[fi].rel + (attempt > 1 ? ' (retry ' + (attempt - 1) + ')' : ''));
+        await processFile(fi, runDir, trainDir, runStamp, ts, logRows);
+        ok = true;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < ATTEMPTS_PER_FILE) await sleep(RETRY_DELAY_MS);
+      }
+    }
+    if (!ok) {
+      const message = (lastErr && lastErr.message) || 'Unknown error';
+      progSet(start + nPages);
+      failures.push({ fi, message });
+      logRows.push([ts, files[fi].rel, '', '', '', nPages, '', 'FAILED_ERROR', message].map(csvCell));
+    }
+  }
+  return failures;
+}
+
+function writeLog(dir, name, rows) {
+  return writeFile(dir, name, [LOG_HEADER, ...rows].map(r => r.join(',')).join('\n') + '\n');
+}
+
 async function applyAll(force) {
-  if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
+  if (!plansDir || !pages.length || !runSelection || !runSelection.length) { msg('Nothing to redact.'); return; }
   saveCurrent(true);
-  const unreviewed = pages.filter(p => !review.get(files[p.fi].rel + '|' + p.pno)?.reviewed).length;
+  const selPages = pages.filter(p => runSelection.includes(p.fi));
+  const unreviewed = selPages.filter(p => !review.get(files[p.fi].rel + '|' + p.pno)?.reviewed).length;
   if (unreviewed && !force) {
     if (!confirm(`${unreviewed} page(s) have not been reviewed. Apply anyway?`)) { msg('Not applied.'); return; }
   }
@@ -847,42 +959,34 @@ async function applyAll(force) {
   const runDir = await outDir.getDirectoryHandle('Redacted Documents ' + runStamp, { create: true });
   lastRunDir = runDir;
   const trainDir = await runDir.getDirectoryHandle('Training ' + runStamp, { create: true });
-  const logRows = [['timestamp', 'source', 'source_sha256', 'output', 'output_sha256', 'pages', 'boxes', 'status', 'problems']];
-  const ts = new Date().toISOString();
-  progStart(pages.length);
+  const logRows = [];
+  runCtx = { runDir, trainDir, runStamp, logRows };
+  progStart(selPages.length);
   try {
-  for (let fi = 0; fi < files.length; fi++) {
-    const f = files[fi];
-    const stem = stemOf(f.rel);
-    msg(`File ${fi + 1} of ${files.length}: ${f.name}`);
-    const bytes = new Uint8Array(await (await f.handle.getFile()).arrayBuffer());
-    const srcDigest = await sha256Hex(bytes);
-    const boxesByPage = {};
-    const nPages = pages.filter(p => p.fi === fi).length;
-    for (let pno = 1; pno <= nPages; pno++) {
-      const e = review.get(f.rel + '|' + pno);
-      if (e && e.boxes.length) boxesByPage[pno - 1] = e.boxes;
-    }
-    const result = await redactPdf(bytes, boxesByPage, trainDir, runStamp + '_' + stem, f.rel);
-    const status = result.problems.length ? 'FAILED_VERIFICATION' : 'VERIFIED';
-    await writeFile(runDir, stem + '_REDACTED.pdf', result.bytes);
-    const outDigest = await sha256Hex(result.bytes);
-    const record = {
-      source: f.rel, sha256: srcDigest, pages: result.numPages,
-      redacted_at: ts, output: stem + '_REDACTED.pdf', output_sha256: outDigest,
-      boxes: boxesByPage, boxes_applied: result.boxCount,
-      verification: status, problems: result.problems,
-    };
-    await writeFile(runDir, stem + '_REDACTION_RECORD.json', JSON.stringify(record, null, 2));
-    const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
-    logRows.push([ts, f.rel, srcDigest, stem + '_REDACTED.pdf', outDigest, result.numPages,
-      result.boxCount, status, result.problems.join('; ')].map(esc));
-  }
-  await writeFile(runDir, 'audit_log.csv', logRows.map(r => r.join(',')).join('\n') + '\n');
-  progFinish(runDir.name);
+    const failures = await runFiles(runSelection, runDir, trainDir, runStamp, logRows);
+    await writeLog(runDir, 'audit_log.csv', logRows);
+    lastFailures = failures;
+    if (!failures.length) progFinish(runDir.name);
+    else progPartial(runDir.name, failures);
   } catch (e) {
     progFail(e);
-    throw e;
+  }
+}
+
+async function retryFailed() {
+  if (!runCtx || !lastFailures.length) return;
+  const list = lastFailures.map(f => f.fi);
+  const total = list.reduce((n, fi) => n + pages.filter(p => p.fi === fi).length, 0);
+  const logRows = [];
+  progStart(total);
+  try {
+    const failures = await runFiles(list, runCtx.runDir, runCtx.trainDir, runCtx.runStamp, logRows);
+    await writeLog(runCtx.runDir, 'audit_log_retry ' + stamp() + '.csv', logRows);
+    lastFailures = failures;
+    if (!failures.length) progFinish(runCtx.runDir.name);
+    else progPartial(runCtx.runDir.name, failures);
+  } catch (e) {
+    progFail(e);
   }
 }
 
@@ -902,11 +1006,91 @@ $('reset').onclick = () => {
 $('reset-no').onclick = () => { $('reset-ov').hidden = true; };
 $('reset-yes').onclick = () => location.reload();
 // Apply first shows the OneDrive instructions, which must be acknowledged before the run starts.
-$('apply').onclick = () => {
-  if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
+let runSelection = null;   // indices of the files the next run will redact
+
+function openPre(selection) {
+  runSelection = selection;
   $('pre-ack').checked = false;
   $('pre-go').disabled = true;
   $('pre').hidden = false;
+}
+
+// Reads the redaction records from earlier runs and returns sha256 -> {at}.
+// Records that failed verification do not count as redacted.
+async function loadPriorHashes() {
+  const prior = new Map();
+  const roots = [outDir, plansDir].filter((d, i, a) => d && a.indexOf(d) === i);
+  for (const root of roots) {
+    for await (const [name, h] of root.entries()) {
+      if (h.kind !== 'directory' || !name.startsWith('Redacted Documents')) continue;
+      for await (const [fname, fh] of h.entries()) {
+        if (fh.kind !== 'file' || !fname.endsWith('_REDACTION_RECORD.json')) continue;
+        try {
+          const rec = JSON.parse(await (await fh.getFile()).text());
+          if (rec.sha256 && rec.verification !== 'FAILED_VERIFICATION') prior.set(rec.sha256, { at: rec.redacted_at });
+        } catch (e) { /* unreadable record: ignore it */ }
+      }
+    }
+  }
+  return prior;
+}
+
+// Splits the plans into PDFs already redacted and PDFs not yet redacted, by content.
+async function checkPrevious() {
+  const prior = await loadPriorHashes();
+  const done = [], fresh = [];
+  for (let fi = 0; fi < files.length; fi++) {
+    msg(`Checking ${fi + 1} of ${files.length}: ${files[fi].name}`);
+    const bytes = new Uint8Array(await (await files[fi].handle.getFile()).arrayBuffer());
+    const sha = await sha256Hex(bytes);
+    if (prior.has(sha)) done.push({ fi, at: prior.get(sha).at }); else fresh.push(fi);
+  }
+  return { done, fresh };
+}
+
+function showDup(title, text, buttons) {
+  $('dup-title').textContent = title;
+  $('dup-text').textContent = text;
+  const foot = $('dup-foot');
+  foot.innerHTML = '';
+  for (const b of buttons) {
+    const btn = document.createElement('button');
+    btn.className = 'btn ' + (b.cls || '');
+    btn.textContent = b.label;
+    btn.onclick = () => { $('dup').hidden = true; b.onClick(); };
+    foot.appendChild(btn);
+  }
+  $('dup').hidden = false;
+}
+
+$('apply').onclick = async () => {
+  if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
+  saveCurrent(true);
+  let check;
+  try {
+    check = await checkPrevious();
+  } catch (e) {
+    msg('Could not check earlier runs: ' + e.message);
+    return;
+  }
+  const all = files.map((_, i) => i);
+  const when = d => d.at ? new Date(d.at).toLocaleString() : 'an earlier run';
+  if (check.fresh.length === 0) {
+    const last = check.done.reduce((a, b) => (a.at > b.at ? a : b), check.done[0]);
+    showDup('Nothing new to redact',
+      `All ${files.length} PDF(s) in this folder were already redacted (most recently on ${when(last)}). The redacted copies are already saved, so no new run is needed.`,
+      [{ label: 'OK', cls: 'primary', onClick: () => {} }]);
+  } else if (check.done.length === 0) {
+    openPre(all);
+  } else {
+    showDup('Some PDFs were already redacted',
+      `${check.done.length} of ${files.length} PDF(s) were already redacted. ${check.fresh.length} ${check.fresh.length === 1 ? 'is' : 'are'} new. Redact only the new PDFs, or redact all of them again?`,
+      [
+        { label: 'Cancel', cls: '', onClick: () => {} },
+        { label: 'Redact all again', cls: '', onClick: () => openPre(all) },
+        { label: 'Redact new only', cls: 'primary', onClick: () => openPre(check.fresh) },
+      ]);
+  }
 };
 $('pre-ack').onchange = () => { $('pre-go').disabled = !$('pre-ack').checked; };
 $('pre-cancel').onclick = () => { $('pre').hidden = true; };
