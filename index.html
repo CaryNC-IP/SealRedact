@@ -111,6 +111,10 @@ body > :not(#rain):not(.ov){position:relative;z-index:1}
 .steps b{color:var(--text)}
 .ack{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text);cursor:pointer;user-select:none}
 .ack input{width:16px;height:16px;accent-color:#4a72f0;margin:0}
+.card.wide{width:min(560px,92vw)}
+.about-p{margin:0 0 14px;color:#c9d0dd;line-height:1.6;font-size:13px}
+.btn.solid-danger{background:#c2413a;border-color:#a8342e;color:#fff}
+.btn.solid-danger:hover{background:#d4534b;border-color:#c2413a}
 .ov-note{padding:9px 12px;font-size:12px;line-height:1.5;color:var(--muted);border-top:1px solid var(--line)}
 </style></head><body>
 <canvas id="rain" aria-hidden="true"></canvas>
@@ -169,13 +173,15 @@ body > :not(#rain):not(.ov){position:relative;z-index:1}
     <button class="btn icon" id="zoom-in" title="Zoom in (Ctrl + wheel, or +)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg></button>
     <button class="btn" id="fit" title="Fit page to width (0)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Fit</button>
     <div class="spacer"></div>
-    <button class="btn" id="reset" title="Clear all choices and start over"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>Clear and Refresh</button>
-    <button class="btn danger" id="del" title="Delete selected box (Delete)"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3"/></svg>Remove Redaction Box</button>
+    <button class="btn" id="undo" title="Undo the last change (up to 5). Shortcut: Ctrl+Z" disabled><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Undo</button>
     <button class="btn primary" id="apply"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Apply redactions</button>
   </div>
   <div class="row" style="margin-top:8px">
     <div class="chip"><i class="chip-dot" id="dot-plans"></i><i>Plans</i><span id="p-plans">none chosen</span></div>
     <div class="chip"><i class="chip-dot" id="dot-out"></i><i>Output</i><span id="p-out">not set</span></div>
+    <div class="spacer"></div>
+    <button class="btn icon" id="help" title="About this tool"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6"/><path d="M12 17h.01"/></svg></button>
+    <button class="btn" id="reset" title="Clear all choices and start over"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>Clear and Refresh</button>
   </div>
 </header>
 
@@ -198,6 +204,34 @@ body > :not(#rain):not(.ov){position:relative;z-index:1}
   </div>
 </footer>
 <div class="contact">For assistance or questions about this page, please email <a href="mailto:bryan.webb@carync.gov">bryan.webb@carync.gov</a></div>
+
+<div id="about" class="ov" hidden>
+  <div class="card wide">
+    <div class="card-title">About Seal Redaction</div>
+    <p class="about-p">This tool finds and blacks out engineer seals on project plan PDFs so the plans can be released under a North Carolina public records request. The black areas are flattened into the page image, so they cannot be removed or changed later.</p>
+    <ol class="steps">
+      <li><b>Choose the plans.</b> Click Choose Plans to be Redacted and pick the folder that holds the PDFs.</li>
+      <li><b>Mark the seals.</b> Click and drag on a page to place a black box. Select a box and press Delete to remove it. Hold Ctrl and scroll the mouse wheel to zoom.</li>
+      <li><b>Apply redactions.</b> Pause OneDrive, click Apply redactions, and confirm. Redacted copies are saved to a new Redacted Documents folder, along with a report.</li>
+    </ol>
+    <p class="about-p">Your original files are never changed. A person must still review every page before the plans are released.</p>
+    <div class="card-foot">
+      <label class="ack"><input type="checkbox" id="about-hide"> Don't show this again</label>
+      <button class="btn primary" id="about-ok">Got it</button>
+    </div>
+  </div>
+</div>
+
+<div id="reset-ov" class="ov" hidden>
+  <div class="card">
+    <div class="card-title">Clear everything and start over?</div>
+    <div class="card-file">All folder choices, boxes, and review progress will be lost. Redaction runs already saved to your output folder are not affected.</div>
+    <div class="card-foot">
+      <button class="btn" id="reset-no">Cancel</button>
+      <button class="btn solid-danger" id="reset-yes">Clear and Refresh</button>
+    </div>
+  </div>
+</div>
 
 <div id="pre" class="ov" hidden>
   <div class="card">
@@ -360,6 +394,16 @@ function progFail(e) {
 }
 $('ov-close').onclick = () => { ov.hidden = true; };
 
+// ---- Welcome window ----
+$('help').onclick = () => { $('about').hidden = false; };
+$('about-ok').onclick = () => {
+  if ($('about-hide').checked) { try { localStorage.setItem('sealIntroSeen', '1'); } catch (e) {} }
+  $('about').hidden = true;
+};
+let introSeen = false;
+try { introSeen = localStorage.getItem('sealIntroSeen') === '1'; } catch (e) {}
+if (!introSeen && !new URLSearchParams(location.search).has('selftest')) $('about').hidden = false;
+
 // Browsers cannot open File Explorer or show files in a folder picker, so the
 // finished files are listed here. Each one opens in a browser tab, where it can
 // be printed or saved to any location.
@@ -459,6 +503,8 @@ async function choosePlans() {
   setChip('dot-out', 'p-out', true, dir.name + ' (new "Redacted Documents" folder)');
   msg('Scanning for PDFs...');
   files = await collectPdfs(dir);
+  undoStack = [];
+  updateUndo();
   review = new Map();
   docCache.forEach(d => d.destroy());
   docCache = new Map();
@@ -624,8 +670,41 @@ function toPt(ev) {
   };
 }
 
+// ---- Undo (last 5 changes) ----
+let undoStack = [];
+const UNDO_LIMIT = 5;
+function pageKeyOf(i) { const { fi, pno } = pages[i]; return files[fi].rel + '|' + pno; }
+function updateUndo() { const b = $('undo'); if (b) b.disabled = undoStack.length === 0; }
+function recordAction(a) {
+  a.key = pageKeyOf(curIdx);
+  undoStack.push(a);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  updateUndo();
+}
+async function undoLast() {
+  if (!undoStack.length || prog.active) return;
+  const a = undoStack.pop();
+  if (curIdx < 0 || pageKeyOf(curIdx) !== a.key) {
+    // The last change was on another page, so go back to that page first.
+    const idx = pages.findIndex((_, i) => pageKeyOf(i) === a.key);
+    if (idx < 0) { updateUndo(); return; }
+    if (curIdx >= 0) saveCurrent(true);
+    await show(idx);
+  }
+  if (a.type === 'add') boxes.splice(a.index, 1);
+  else if (a.type === 'del') boxes.splice(a.index, 0, a.box.slice());
+  else if (a.type === 'move') boxes[a.index] = a.before.slice();
+  sel = -1;
+  draw();
+  updateUndo();
+}
 function deleteSelected() {
-  if (sel >= 0) { boxes.splice(sel, 1); sel = -1; draw(); }
+  if (sel < 0 || curIdx < 0) return;
+  const box = boxes[sel].slice();
+  recordAction({ type: 'del', index: sel, box });
+  boxes.splice(sel, 1);
+  sel = -1;
+  draw();
 }
 
 c.addEventListener('mousedown', ev => {
@@ -661,14 +740,24 @@ window.addEventListener('mouseup', () => {
   if (!drag) return;
   if (drag.mode === 'new') {
     const b = [Math.min(drag.x0, drag.x1), Math.min(drag.y0, drag.y1), Math.max(drag.x0, drag.x1), Math.max(drag.y0, drag.y1)];
-    if (b[2] - b[0] > 2 && b[3] - b[1] > 2) { boxes.push(b); sel = boxes.length - 1; }
+    if (b[2] - b[0] > 2 && b[3] - b[1] > 2) {
+      boxes.push(b);
+      sel = boxes.length - 1;
+      recordAction({ type: 'add', index: boxes.length - 1 });
+    }
+  } else if (drag.mode === 'move') {
+    const now = boxes[drag.i];
+    if (now && now.some((v, k) => v !== drag.orig[k])) {
+      recordAction({ type: 'move', index: drag.i, before: drag.orig, after: now.slice() });
+    }
   }
   drag = null;
   draw();
 });
 
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT' || prog.active || !$('pre').hidden) return;
+  if (e.target.tagName === 'INPUT' || prog.active || !$('pre').hidden || !$('about').hidden || !$('reset-ov').hidden) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undoLast(); }
   if (e.key === 'ArrowRight') { e.preventDefault(); go(curIdx + 1); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); go(curIdx - 1); }
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
@@ -805,13 +894,13 @@ $('next').onclick = () => go(curIdx + 1);
 $('zoom-in').onclick = () => zoomAt(1.25, null, null);
 $('zoom-out').onclick = () => zoomAt(1 / 1.25, null, null);
 $('fit').onclick = fitWidth;
-$('del').onclick = deleteSelected;
+$('undo').onclick = undoLast;
 $('reset').onclick = () => {
   if (prog.active) { msg('Wait for the redaction to finish first.'); return; }
-  const hasWork = [...review.values()].some(v => v.reviewed || v.boxes.length);
-  if (hasWork && !confirm('Clear all folder choices and boxes, and start over? Redaction runs already saved to your output folder are not affected.')) return;
-  location.reload();
+  $('reset-ov').hidden = false;
 };
+$('reset-no').onclick = () => { $('reset-ov').hidden = true; };
+$('reset-yes').onclick = () => location.reload();
 // Apply first shows the OneDrive instructions, which must be acknowledged before the run starts.
 $('apply').onclick = () => {
   if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
