@@ -67,7 +67,7 @@ header{background:linear-gradient(180deg,#171c26,#131720);border-bottom:1px soli
 #wrap::-webkit-scrollbar-track{background:transparent}
 canvas{display:block;background:#fff;max-width:none;border-radius:3px;
   box-shadow:0 1px 0 rgba(255,255,255,.04),0 18px 50px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.4);cursor:crosshair}
-#empty{margin:auto;text-align:center;color:var(--muted);max-width:420px}
+#empty{margin:auto;text-align:center;color:var(--muted);max-width:420px;display:flex;flex-direction:column;align-items:center}
 #empty .big{width:64px;height:64px;margin:0 auto 18px;border-radius:18px;background:var(--panel-2);
   border:1px solid var(--line);display:grid;place-items:center}
 #empty .big svg{width:28px;height:28px;stroke:var(--accent-2);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -183,6 +183,7 @@ body > :not(#rain):not(.ov){position:relative;z-index:1}
   <div class="row" style="margin-top:8px">
     <div class="chip"><i class="chip-dot" id="dot-plans"></i><i>Plans</i><span id="p-plans">none chosen</span></div>
     <div class="chip"><i class="chip-dot" id="dot-out"></i><i>Output</i><span id="p-out">not set</span></div>
+    <div class="chip" title="Pages you have reviewed, counted across the whole folder"><i class="chip-dot" id="dot-rev"></i><i>Reviewed</i><span id="p-rev">no folder yet</span></div>
     <div class="spacer"></div>
     <button class="btn icon" id="help" title="About this tool"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6"/><path d="M12 17h.01"/></svg></button>
   </div>
@@ -330,6 +331,38 @@ async function loadLibs() {
 
 function msg(t) { $('msg').textContent = t; }
 
+// Header chip: which pages are reviewed, counted across the whole folder (page 1 of the first file is 1).
+function updateReviewedChip() {
+  let idx = 0, total = 0;
+  const hit = [];
+  for (let fi = 0; fi < files.length; fi++) {
+    const n = pageCounts[fi] || 0;
+    for (let pno = 1; pno <= n; pno++) {
+      idx++;
+      total++;
+      if (review.get(files[fi].rel + '|' + pno)?.reviewed) hit.push(idx);
+    }
+  }
+  let text;
+  if (!total) text = 'no folder yet';
+  else if (!hit.length) text = `none of ${total} pages`;
+  else {
+    const parts = [];
+    let i = 0;
+    while (i < hit.length) {
+      let j = i;
+      while (j + 1 < hit.length && hit[j + 1] === hit[j] + 1) j++;
+      parts.push(j > i ? `${hit[i]}–${hit[j]}` : `${hit[i]}`);
+      i = j + 1;
+    }
+    text = `pages ${parts.join(', ')} (${hit.length} of ${total})`;
+  }
+  const span = $('p-rev');
+  span.textContent = text;
+  span.title = text;
+  $('dot-rev').classList.toggle('on', hit.length > 0);
+}
+
 // ---- Progress (page-based, with an estimate of time left) ----
 const ov = $('ov'), fill = $('bar-fill');
 let prog = { active: false, total: 0, done: 0, stamps: [], started: 0 };
@@ -390,7 +423,7 @@ function progPartial(name, failures, partials) {
   $('ov-title').textContent = failures.length ? `Finished, but ${failures.length} file(s) failed` : 'Finished, with unreviewed pages left';
   $('ov-title').className = 'card-title';
   $('ov-file').textContent = `Saved to "${name}"`;
-  $('ov-eta').textContent = `${partials.length} file(s) not written yet`;
+  $('ov-eta').textContent = `${partials.length} file(s) with unreviewed pages`;
   const list = $('ov-list');
   list.innerHTML = '';
   list.hidden = false;
@@ -404,7 +437,12 @@ function progPartial(name, failures, partials) {
     list.appendChild(row);
   };
   for (const f of failures) add(`${files[f.fi].rel}: could not be redacted (${f.message})`);
-  for (const fi of partials) add(`${files[fi].rel}: not written yet. Unreviewed pages remain, and the progress is saved. Next time only those pages will open.`);
+  for (const p of partials) {
+    const rem = p.n - p.reviewed;
+    add(p.part
+      ? `${files[p.fi].rel}: part file saved for ${p.reviewed} reviewed page(s). ${rem} page(s) still unreviewed.`
+      : `${files[p.fi].rel}: no pages reviewed yet, nothing written. ${rem} page(s) waiting.`);
+  }
   $('ov-retry').hidden = !failures.length;
   $('ov-close').hidden = false;
   msg(`Finished. ${partials.length} file(s) still have unreviewed pages${failures.length ? ', ' + failures.length + ' failed' : ''}.`);
@@ -693,6 +731,7 @@ async function show(i) {
   wrap.scrollTop = 0;
   await renderCurrent();
   $('pos').innerHTML = `Page <b>${i + 1}</b> of ${pages.length}`;
+  updateReviewedChip();
   const reviewedCount = [...review.values()].filter(v => v.reviewed).length;
   msg(`${files[fi].name}, page ${pno}  |  ${e.reviewed ? 'reviewed' : 'not yet reviewed'}  |  ${reviewedCount} of ${pages.length} reviewed`);
 }
@@ -703,6 +742,7 @@ function saveCurrent(reviewed) {
   const e = entryFor(fi, pno);
   e.boxes = boxes.map(b => b.slice());
   e.reviewed = e.reviewed || reviewed;
+  updateReviewedChip();
 }
 
 async function go(i) {
@@ -854,12 +894,13 @@ document.addEventListener('keydown', e => {
 // Renders one PDF, paints the boxes solid black in the image, checks them, and
 // builds a new PDF from those flattened images. Also saves unredacted page
 // images and boxes for later model training when trainDir is given.
-async function redactPdf(bytes, boxesByPage, trainDir, stem, rel) {
+async function redactPdf(bytes, boxesByPage, trainDir, stem, rel, onlyPages) {
   const src = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
   const out = await PDFLib.PDFDocument.create();
   const problems = [];
   let boxCount = 0;
-  for (let p = 1; p <= src.numPages; p++) {
+  const pageList = onlyPages || Array.from({ length: src.numPages }, (_, i) => i + 1);
+  for (const p of pageList) {
     msg(`Redacting ${rel}: page ${p} of ${src.numPages}`);
     progLabel(`${rel}, page ${p} of ${src.numPages}`);
     const page = await src.getPage(p);
@@ -914,7 +955,7 @@ async function redactPdf(bytes, boxesByPage, trainDir, stem, rel) {
     rc.height = 0;
     progTick();
   }
-  const numPages = src.numPages;
+  const numPages = pageList.length;
   src.destroy();
   return { bytes: await out.save(), problems, numPages, boxCount };
 }
@@ -929,8 +970,30 @@ const LOG_HEADER = ['timestamp', 'source', 'source_sha256', 'output', 'output_sh
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function csvCell(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }
 
-// Redacts one file and writes its output. Throws if the file cannot be processed.
-// Redacts one file and writes its output. Returns 'DONE', or 'PARTIAL' when pages are still unreviewed.
+// Number of reviewed pages in file fi.
+function reviewedPagesOf(fi) {
+  let c = 0;
+  for (let pno = 1; pno <= pageCounts[fi]; pno++) if (review.get(files[fi].rel + '|' + pno)?.reviewed) c++;
+  return c;
+}
+// Page list such as "p1-4_p7", used in file names.
+function pageLabel(list, total) {
+  const parts = [];
+  let i = 0;
+  while (i < list.length) {
+    let j = i;
+    while (j + 1 < list.length && list[j + 1] === list[j] + 1) j++;
+    parts.push(j > i ? `p${list[i]}-${list[j]}` : `p${list[i]}`);
+    i = j + 1;
+  }
+  const label = parts.join('_');
+  return label.length <= 60 ? label : `${list.length}pages_of_${total}`;
+}
+
+// Redacts one file. Only reviewed pages are redacted.
+// If every page is reviewed, writes the full redacted file and returns { status: 'DONE' }.
+// If some pages are not reviewed, writes a part file with the reviewed pages only, saves progress,
+// and returns { status: 'PARTIAL', part, reviewed, n }.
 async function processFile(fi, runDir, trainDir, runStamp, ts, logRows, progress) {
   const f = files[fi];
   const stem = stemOf(f.rel);
@@ -939,24 +1002,43 @@ async function processFile(fi, runDir, trainDir, runStamp, ts, logRows, progress
   f.sha = srcDigest;
   const n = pageCounts[fi];
   const boxesByPage = {};
+  const reviewedList = [];
   const savedPages = {};
-  let reviewedCount = 0;
   for (let pno = 1; pno <= n; pno++) {
     const e = review.get(f.rel + '|' + pno);
     if (e && e.boxes.length) boxesByPage[pno - 1] = e.boxes;
     if (e && e.reviewed) {
-      reviewedCount++;
+      reviewedList.push(pno);
       savedPages[pno] = { boxes: e.boxes.map(b => b.slice()) };
     }
   }
-  if (reviewedCount < n) {
-    // Not every page is reviewed, so nothing is written for this file.
-    // The reviewed pages are saved so that next time only the rest open.
+
+  if (reviewedList.length < n) {
     progress[srcDigest] = { source: f.rel, updated: ts, pages: savedPages };
-    logRows.push([ts, f.rel, srcDigest, '', '', n, '', 'NOT_WRITTEN_UNREVIEWED_PAGES',
-      `${n - reviewedCount} of ${n} page(s) not reviewed yet; progress saved`].map(csvCell));
-    return 'PARTIAL';
+    const remaining = n - reviewedList.length;
+    if (!reviewedList.length) {
+      logRows.push([ts, f.rel, srcDigest, '', '', n, '', 'NOTHING_REVIEWED', `${n} of ${n} page(s) not reviewed yet; nothing written`].map(csvCell));
+      return { status: 'PARTIAL', reviewed: 0, n };
+    }
+    const part = `${stem}_PART_${pageLabel(reviewedList, n)}`;
+    const result = await redactPdf(bytes, boxesByPage, trainDir, runStamp + '_' + stem, f.rel, reviewedList);
+    const status = result.problems.length ? 'FAILED_VERIFICATION' : 'VERIFIED';
+    await writeFile(runDir, part + '.pdf', result.bytes);
+    const outDigest = await sha256Hex(result.bytes);
+    const record = {
+      source: f.rel, sha256: srcDigest, pages_included: reviewedList, pages_total: n,
+      redacted_at: ts, output: part + '.pdf', output_sha256: outDigest,
+      all_pages_reviewed: false,
+      note: `Part file: only the listed pages are redacted. ${remaining} page(s) are not reviewed yet.`,
+      boxes: boxesByPage, boxes_applied: result.boxCount,
+      verification: status, problems: result.problems,
+    };
+    await writeFile(runDir, part + '_RECORD.json', JSON.stringify(record, null, 2));
+    logRows.push([ts, f.rel, srcDigest, part + '.pdf', outDigest, reviewedList.length,
+      result.boxCount, 'PART_' + status, `${remaining} of ${n} page(s) not reviewed yet`].map(csvCell));
+    return { status: 'PARTIAL', part: part + '.pdf', reviewed: reviewedList.length, n };
   }
+
   delete progress[srcDigest];
   const result = await redactPdf(bytes, boxesByPage, trainDir, runStamp + '_' + stem, f.rel);
   const status = result.problems.length ? 'FAILED_VERIFICATION' : 'VERIFIED';
@@ -972,9 +1054,10 @@ async function processFile(fi, runDir, trainDir, runStamp, ts, logRows, progress
   await writeFile(runDir, stem + '_REDACTION_RECORD.json', JSON.stringify(record, null, 2));
   logRows.push([ts, f.rel, srcDigest, stem + '_REDACTED.pdf', outDigest, result.numPages,
     result.boxCount, status, result.problems.join('; ')].map(csvCell));
-  return 'DONE';
+  return { status: 'DONE' };
 }
 
+// Runs a list of files. A file that keeps failing is recorded and skipped, so the run carries on.
 // Runs a list of files. A file that keeps failing is recorded and skipped, so the run carries on.
 // Runs a list of files. A file that keeps failing is recorded and skipped, so the run carries on.
 async function runFiles(fiList, runDir, trainDir, runStamp, logRows, progress) {
@@ -982,26 +1065,28 @@ async function runFiles(fiList, runDir, trainDir, runStamp, logRows, progress) {
   const failures = [], partials = [];
   for (const fi of fiList) {
     const start = prog.done;
-    const nPages = pageCounts[fi];
-    let lastErr = null, status = null;
-    for (let attempt = 1; attempt <= ATTEMPTS_PER_FILE && !status; attempt++) {
+    const work = reviewedPagesOf(fi);   // only reviewed pages are processed
+    let lastErr = null, res = null;
+    for (let attempt = 1; attempt <= ATTEMPTS_PER_FILE && !res; attempt++) {
       try {
         progSet(start);   // a retry starts this file's progress over
         progLabel(files[fi].rel + (attempt > 1 ? ' (retry ' + (attempt - 1) + ')' : ''));
-        status = await processFile(fi, runDir, trainDir, runStamp, ts, logRows, progress);
+        res = await processFile(fi, runDir, trainDir, runStamp, ts, logRows, progress);
       } catch (e) {
         lastErr = e;
         if (attempt < ATTEMPTS_PER_FILE) await sleep(RETRY_DELAY_MS);
       }
     }
-    if (!status) {
+    if (!res) {
       const message = (lastErr && lastErr.message) || 'Unknown error';
-      progSet(start + nPages);
+      progSet(start + work);
       failures.push({ fi, message });
-      logRows.push([ts, files[fi].rel, '', '', '', nPages, '', 'FAILED_ERROR', message].map(csvCell));
-    } else if (status === 'PARTIAL') {
-      progSet(start + nPages);
-      partials.push(fi);
+      logRows.push([ts, files[fi].rel, '', '', '', work, '', 'FAILED_ERROR', message].map(csvCell));
+    } else if (res.status === 'PARTIAL') {
+      progSet(start + work);
+      partials.push({ fi, part: res.part || null, reviewed: res.reviewed, n: res.n });
+    } else {
+      progSet(start + work);
     }
   }
   return { failures, partials };
@@ -1017,7 +1102,7 @@ async function applyAll(force) {
   const selPages = pages.filter(p => runSelection.includes(p.fi));
   const unreviewed = selPages.filter(p => !review.get(files[p.fi].rel + '|' + p.pno)?.reviewed).length;
   if (unreviewed && !force) {
-    if (!confirm(`${unreviewed} page(s) have not been reviewed. Files with unreviewed pages will not be written yet. Their reviewed pages are saved, so next time only the unreviewed pages will open. Continue?`)) { msg('Not applied.'); return; }
+    if (!confirm(`${unreviewed} page(s) have not been reviewed. Only the reviewed pages will be redacted. Unreviewed pages are not touched and will open next time. Continue?`)) { msg('Not applied.'); return; }
   }
   // One timestamp for the whole run, so the folder and every training file can be searched and copied together.
   const runStamp = stamp();
@@ -1027,7 +1112,7 @@ async function applyAll(force) {
   const logRows = [];
   const progress = await loadProgress();
   runCtx = { runDir, trainDir, runStamp, logRows, progress };
-  progStart(runSelection.reduce((n, fi) => n + pageCounts[fi], 0));
+  progStart(runSelection.reduce((n, fi) => n + reviewedPagesOf(fi), 0));
   try {
     const { failures, partials } = await runFiles(runSelection, runDir, trainDir, runStamp, logRows, progress);
     await writeLog(runDir, 'audit_log.csv', logRows);
@@ -1043,7 +1128,7 @@ async function applyAll(force) {
 async function retryFailed() {
   if (!runCtx || !lastFailures.length) return;
   const list = lastFailures.map(f => f.fi);
-  const total = list.reduce((n, fi) => n + pageCounts[fi], 0);
+  const total = list.reduce((n, fi) => n + reviewedPagesOf(fi), 0);
   const logRows = [];
   progStart(total);
   try {
@@ -1051,7 +1136,7 @@ async function retryFailed() {
     await writeLog(runCtx.runDir, 'audit_log_retry ' + stamp() + '.csv', logRows);
     await saveProgress(runCtx.progress);
     lastFailures = failures;
-    lastPartials = [...new Set([...lastPartials, ...partials])];
+    lastPartials = [...lastPartials.filter(p => !partials.some(q => q.fi === p.fi)), ...partials];
     progFinishAll(runCtx.runDir.name, failures, lastPartials);
   } catch (e) {
     progFail(e);
