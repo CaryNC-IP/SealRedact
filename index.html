@@ -107,6 +107,10 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
 .ov-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c9d0dd}
 .ov-row .btn{height:28px;padding:0 12px;font-size:12px}
 .ov-path{font-family:Consolas,"Cascadia Mono",monospace;font-size:12.5px;color:var(--text) !important;user-select:all}
+.steps{margin:0 0 16px;padding-left:20px;color:#c9d0dd;font-size:13px;line-height:1.6}
+.steps b{color:var(--text)}
+.ack{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text);cursor:pointer;user-select:none}
+.ack input{width:16px;height:16px;accent-color:#4a72f0;margin:0}
 .ov-note{padding:9px 12px;font-size:12px;line-height:1.5;color:var(--muted);border-top:1px solid var(--line)}
 </style></head><body>
 <canvas id="rain" aria-hidden="true"></canvas>
@@ -193,6 +197,23 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
   </div>
 </footer>
 <div class="contact">For assistance or questions about this page, please email <a href="mailto:bryan.webb@carync.gov">bryan.webb@carync.gov</a></div>
+
+<div id="pre" class="ov" hidden>
+  <div class="card">
+    <div class="card-title">Before you start</div>
+    <div class="card-file">OneDrive must be paused so the plan files cannot change while they are being redacted.</div>
+    <ol class="steps">
+      <li>Click the OneDrive cloud icon in the taskbar, near the clock. If you don't see it, click the up arrow (^) first.</li>
+      <li>In the OneDrive window, click the settings (gear) icon, then choose <b>Pause syncing</b> and select <b>2 hours</b>.</li>
+      <li>Close any program that has the plans open, including Explorer's preview pane and PDF viewers.</li>
+    </ol>
+    <label class="ack"><input type="checkbox" id="pre-ack"> I have paused OneDrive sync and closed the plans</label>
+    <div class="card-foot">
+      <button class="btn" id="pre-cancel">Cancel</button>
+      <button class="btn primary" id="pre-go" disabled>Start redaction</button>
+    </div>
+  </div>
+</div>
 
 <div id="ov" class="ov" hidden>
   <div class="card">
@@ -323,7 +344,7 @@ function progFinish(name) {
   $('ov-eta').textContent = `Took ${fmtDur((performance.now() - prog.started) / 1000)}`;
   $('ov-close').hidden = false;
   showOutputList();
-  msg(`Done. Saved to "${name}".`);
+  msg(`Done. Saved to "${name}". You can resume OneDrive sync now.`);
 }
 function progFail(e) {
   prog.active = false;
@@ -644,7 +665,7 @@ window.addEventListener('mouseup', () => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT' || prog.active) return;
+  if (e.target.tagName === 'INPUT' || prog.active || !$('pre').hidden) return;
   if (e.key === 'ArrowRight') { e.preventDefault(); go(curIdx + 1); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); go(curIdx - 1); }
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
@@ -782,7 +803,16 @@ $('zoom-in').onclick = () => zoomAt(1.25, null, null);
 $('zoom-out').onclick = () => zoomAt(1 / 1.25, null, null);
 $('fit').onclick = fitWidth;
 $('del').onclick = deleteSelected;
-$('apply').onclick = () => applyAll(false);
+// Apply first shows the OneDrive instructions, which must be acknowledged before the run starts.
+$('apply').onclick = () => {
+  if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
+  $('pre-ack').checked = false;
+  $('pre-go').disabled = true;
+  $('pre').hidden = false;
+};
+$('pre-ack').onchange = () => { $('pre-go').disabled = !$('pre-ack').checked; };
+$('pre-cancel').onclick = () => { $('pre').hidden = true; };
+$('pre-go').onclick = () => { $('pre').hidden = true; applyAll(false); };
 
 (async () => {
   if (!window.showDirectoryPicker) $('warn').style.display = 'block';
