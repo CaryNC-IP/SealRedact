@@ -547,6 +547,25 @@ async function choosePlans() {
   files = await collectPdfs(dir);
   undoStack = [];
   updateUndo();
+  // Ask before any pages open if some PDFs were already redacted.
+  let check = null;
+  try {
+    msg('Checking for earlier redactions...');
+    check = await checkPrevious();
+  } catch (e) { check = null; }
+  if (check && check.done.length) {
+    const choice = await askDup(
+      check.fresh.length ? 'Some PDFs were already redacted' : 'All PDFs were already redacted',
+      check.fresh.length
+        ? `${check.done.length} of ${files.length} PDF(s) in this folder were already redacted. Would you like to open only the ${check.fresh.length} new PDF(s) for redaction, or all of them?`
+        : `All ${files.length} PDF(s) in this folder were already redacted. Would you like to open them anyway?`,
+      check.fresh.length
+        ? [{ label: 'Open new PDFs only', cls: 'primary', value: 'new' }, { label: 'Open all PDFs', cls: '', value: 'all' }]
+        : [{ label: 'Open all PDFs', cls: '', value: 'all' }, { label: 'Cancel', cls: '', value: 'none' }]
+    );
+    if (choice === 'new') files = check.fresh.map(fi => files[fi]);
+    else if (choice === 'none') files = [];
+  }
   review = new Map();
   docCache.forEach(d => d.destroy());
   docCache = new Map();
@@ -558,7 +577,7 @@ async function choosePlans() {
   }
   if (!pages.length) {
     showEmpty(true);
-    msg('No PDF files found in that folder.');
+    msg(check && check.done.length ? 'No PDFs were opened. Choose a folder again to start over.' : 'No PDF files found in that folder.');
     return;
   }
   msg(`${files.length} file(s), ${pages.length} page(s)`);
@@ -1061,6 +1080,11 @@ function showDup(title, text, buttons) {
     foot.appendChild(btn);
   }
   $('dup').hidden = false;
+}
+
+function askDup(title, text, buttons) {
+  return new Promise(resolve => showDup(title, text,
+    buttons.map(x => ({ label: x.label, cls: x.cls, onClick: () => resolve(x.value) }))));
 }
 
 $('apply').onclick = async () => {
