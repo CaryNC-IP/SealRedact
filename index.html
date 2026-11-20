@@ -161,7 +161,6 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     </div>
     <button class="btn" id="b-plans"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Choose Plans to be Redacted</button>
     <button class="btn" id="b-out"><svg viewBox="0 0 24 24"><path d="M12 5v10M8 11l4 4 4-4"/><path d="M4 19h16"/></svg>Output location</button>
-    <button class="btn" id="b-model">Load seal model</button>
     <button class="btn" id="b-auto" style="background:#90EE90;border-color:#90EE90;color:#000">Redact all automatically</button>
     <div class="sep"></div>
     <button class="btn icon" id="prev" title="Previous page (Left arrow)"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -187,7 +186,7 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     <div class="big"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
     <h2>Choose a plans folder to begin</h2>
     <ol class="steps">
-      <li><b>Seal model.</b> The model loads automatically when the page opens. If the status line says it did not load, click <b>Load seal model</b> and pick the folder that holds <code>seal_v3.onnx</code> and the three <code>ort</code> files. Without the model you can still redact by hand.</li>
+      <li><b>Seal model.</b> The model loads automatically when the page opens. If the status line says it was not found, automatic detection is off and you can still redact by hand.</li>
       <li><b>Choose the plans folder.</b> Pick the folder with the PDF plans. Redacted copies go into a new folder inside it unless you choose an output location.</li>
       <li><b>Pick how you want to work:</b>
         <ul class="modes">

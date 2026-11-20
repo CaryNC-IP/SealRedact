@@ -164,23 +164,6 @@
     return found;
   }
 
-  // Button handler: the user picks the app folder that holds the model files.
-  async function loadSealModel() {
-    try {
-      const dir = await window.showDirectoryPicker({ mode: 'read' });
-      msg('Loading seal model...');
-      await loadModelFrom(async name => {
-        const fh = await dir.getFileHandle(name);
-        return new Uint8Array(await (await fh.getFile()).arrayBuffer());
-      });
-      msg('Seal model loaded. Each page will be pre-marked as you open it.');
-    } catch (err) {
-      if (err && err.name === 'AbortError') { msg('Seal model not loaded.'); return; }
-      console.error(err);
-      msg('Could not load the seal model: ' + err.message);
-    }
-  }
-
   // Loads the model files from the same folder as the page (used when the page is hosted).
   async function loadModelFromPage() {
     const readFromPage = async name => {
@@ -191,7 +174,7 @@
     await loadModelFrom(readFromPage);
   }
 
-  // Runs when the page opens. If the files are not beside the page, the Load seal model button still works.
+  // Runs when the page opens and loads the model files from beside the page.
   async function autoLoadModel() {
     try {
       msg('Loading seal model...');
@@ -199,13 +182,11 @@
       msg('Seal model loaded. Choose a plans folder to begin.');
     } catch (err) {
       console.warn('Seal model not loaded automatically:', err.message);
-      msg('Seal model not loaded automatically. Click Load seal model and pick the model folder.');
+      msg('Seal model not found. Automatic detection is off. You can still redact by hand.');
     }
   }
 
   window.autoDetectPage = autoDetectPage;
   window.sealDetect = { loadModelFrom, detectOnCanvas, detectOnPage, iou, isLoaded: () => !!session };
-  const btn = document.getElementById('b-model');
-  if (btn) btn.addEventListener('click', loadSealModel);
   autoLoadModel();
 })();
