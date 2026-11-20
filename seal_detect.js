@@ -181,8 +181,31 @@
     }
   }
 
+  // Loads the model files from the same folder as the page (used when the page is hosted).
+  async function loadModelFromPage() {
+    const readFromPage = async name => {
+      const r = await fetch(new URL(name, document.baseURI));
+      if (!r.ok) throw new Error(name + ' not found (' + r.status + ')');
+      return new Uint8Array(await r.arrayBuffer());
+    };
+    await loadModelFrom(readFromPage);
+  }
+
+  // Runs when the page opens. If the files are not beside the page, the Load seal model button still works.
+  async function autoLoadModel() {
+    try {
+      msg('Loading seal model...');
+      await loadModelFromPage();
+      msg('Seal model loaded. Choose a plans folder to begin.');
+    } catch (err) {
+      console.warn('Seal model not loaded automatically:', err.message);
+      msg('Seal model not loaded automatically. Click Load seal model and pick the model folder.');
+    }
+  }
+
   window.autoDetectPage = autoDetectPage;
   window.sealDetect = { loadModelFrom, detectOnCanvas, detectOnPage, iou, isLoaded: () => !!session };
   const btn = document.getElementById('b-model');
   if (btn) btn.addEventListener('click', loadSealModel);
+  autoLoadModel();
 })();
