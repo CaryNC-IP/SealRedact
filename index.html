@@ -169,7 +169,7 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     </div>
     <button class="btn" id="b-plans"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Choose Plans to be Redacted</button>
     <button class="btn" id="b-out"><svg viewBox="0 0 24 24"><path d="M12 5v10M8 11l4 4 4-4"/><path d="M4 19h16"/></svg>Output location</button>
-    <button class="btn" id="b-auto" style="background:#90EE90;border-color:#90EE90;color:#000">Redact all automatically</button>
+    <button class="btn" id="b-auto" style="background:#90EE90;border-color:#90EE90;color:#000">Find seals automatically</button>
     <div class="sep"></div>
     <button class="btn icon" id="prev" title="Previous page (Left arrow)"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
     <div class="pill" id="pos">Page 0 of 0</div>
@@ -181,7 +181,7 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     <button class="btn" id="fit" title="Fit page to width (0)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Fit</button>
     <div class="spacer"></div>
     <button class="btn danger" id="del" title="Delete selected box (Delete)"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3"/></svg>Remove Redaction Box</button>
-    <button class="btn primary" id="apply"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Apply redactions</button>
+    <button class="btn primary" id="apply"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Lock in Redactions</button>
   </div>
   <div class="row" style="margin-top:8px">
     <div class="chip"><i class="chip-dot" id="dot-plans"></i><i>Plans</i><span id="p-plans">none chosen</span></div>
@@ -200,11 +200,11 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
       <li><b>Pick how you want to work:</b>
         <ul class="modes">
           <li><b>Manual:</b> you draw every box. Drag on a page to draw, drag a box to move it, and press Delete to remove the selected box.</li>
-          <li><b>Pre-marked, with review:</b> with the model loaded, each page is marked as you open it. Check every box before you click <b>Apply redactions</b>.</li>
-          <li><b>Redact all automatically (green):</b> redacts every page with the model's boxes and no review. Output goes to a folder named AUTO. Check that output before you release it.</li>
+          <li><b>Pre-marked, with review:</b> with the model loaded, each page is marked as you open it. Check every box, then click <b>Lock in Redactions</b>.</li>
+          <li><b>Find seals automatically (green):</b> marks seals on every page. Nothing is locked yet. Review and fix the pages, then click <b>Lock in Redactions</b>.</li>
         </ul>
       </li>
-      <li><b>Apply.</b> <b>Apply redactions</b> writes new redacted PDFs. Your original files are never changed.</li>
+      <li><b>Lock in.</b> <b>Lock in Redactions</b> writes new redacted PDFs with the boxes you see. Your original files are never changed.</li>
     </ol>
     <p class="tip">Arrow keys move between pages. Ctrl plus the mouse wheel zooms. Each output is checked to confirm its boxes are solid black before it is saved.</p>
     <button class="btn primary" id="b-plans-2" style="margin:0 auto"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Choose plans folder</button>
@@ -217,7 +217,7 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     <div class="mode-opts">
       <button class="btn" id="mode-manual">Fully manual<span>You draw every box yourself.</span></button>
       <button class="btn" id="mode-semi">Semi-automatic<span>The model marks each page as you open it. You check every box before applying.</span></button>
-      <button class="btn" id="mode-auto" style="background:#90EE90;border-color:#90EE90;color:#000">Fully automatic<span>Redacts every page with the model's boxes and no review. Output goes to a folder named AUTO.</span></button>
+      <button class="btn" id="mode-auto" style="background:#90EE90;border-color:#90EE90;color:#000">Fully automatic<span>Marks seals on every page. You review the pages, then click Lock in Redactions.</span></button>
     </div>
     <div class="card-foot"><span id="mode-note"></span></div>
   </div>
@@ -518,6 +518,7 @@ async function choosePlans() {
   }
   msg(`${files.length} file(s), ${pages.length} page(s)`);
   modeChoice = null;
+  autoRunUsed = false;
   await show(0);
   askMode();
 }
@@ -867,6 +868,7 @@ async function runApplyJob() {
 let runBusy = false;
 let applyJob = null;   // redaction run in progress, or stopped and waiting to resume
 let autoJob = null;    // seal-finding pass in progress, or stopped and waiting to resume
+let autoRunUsed = false; // true once automatic seal-finding has run on this plans folder
 function pendingRun() { return !!(applyJob || autoJob); }
 function pagesBefore(fi) { return pages.filter(p => p.fi < fi).length; }
 
@@ -883,10 +885,9 @@ async function autoRedactAll() {
   if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
   if (!(window.sealDetect && window.sealDetect.isLoaded())) { msg('Load the seal model first.'); return; }
   if (runBusy || pendingRun()) { msg('A redaction run is already in progress or waiting to resume.'); return; }
-  const ok = confirm(`Redact all ${pages.length} page(s) automatically?\n\n` +
-    'No one will review these pages before they are redacted. Only the model\'s boxes will be applied. ' +
-    'The output goes to a new folder named AUTO. Your original files are not changed. ' +
-    'Check the output before releasing it.');
+  const ok = confirm(`Find seals on all ${pages.length} page(s)?\n\n` +
+    'Nothing is locked in yet. You will review the pages, then click Lock in Redactions. ' +
+    'Your original files are not changed.');
   if (!ok) { msg('Automatic redaction cancelled.'); return; }
   runBusy = true;
   saveCurrent(false);
@@ -915,7 +916,13 @@ async function runDetection() {
       progTick();
     }
     autoJob = null;
-    await applyAllInner(true, true);
+    autoRunUsed = true;
+    prog.active = false;
+    clearInterval(progTimer);
+    ov.hidden = true;
+    if (curIdx >= 0) await show(curIdx);
+    const withBoxes = pages.filter(p => entryFor(p.fi, p.pno).boxes.length).length;
+    msg(`Seals marked on ${withBoxes} of ${pages.length} page(s). Review each page, then click Lock in Redactions.`);
   } catch (err) {
     console.error(err);
     progFail(err, runDetection);
@@ -935,7 +942,7 @@ $('zoom-in').onclick = () => zoomAt(1.25, null, null);
 $('zoom-out').onclick = () => zoomAt(1 / 1.25, null, null);
 $('fit').onclick = fitWidth;
 $('del').onclick = deleteSelected;
-$('apply').onclick = () => applyAll(false);
+$('apply').onclick = () => applyAll(true, autoRunUsed);
 
 (async () => {
   if (!window.showDirectoryPicker) $('warn').style.display = 'block';
