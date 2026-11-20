@@ -129,6 +129,10 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
 .mode-opts .btn span{display:block;font-size:13px;font-weight:400;white-space:normal;line-height:1.45}
 .mode-opts .btn:disabled{opacity:.45;cursor:not-allowed}
 #mode-note{font-size:13px;color:#ffb3b3}
+.mode-wait{margin-top:14px;padding:10px 12px;border-radius:8px;background:rgba(47,111,191,.16);border:1px solid #2F6FBF;color:#C9D6E8;font-size:14px;line-height:1.45}
+.mode-wait[hidden]{display:none}
+#mode-resume{border:1.5px solid #2F6FBF;background:rgba(47,111,191,.16)}
+#mode-resume[hidden],#ov-stop[hidden]{display:none}
 </style></head><body>
 <canvas id="rain" aria-hidden="true"></canvas>
 
@@ -222,7 +226,9 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
   <div class="card">
     <div class="card-title">How do you want to redact this set?</div>
     <div class="card-file">Pick one. The choice applies to this plans folder.</div>
-    <div class="mode-opts">
+    <div id="mode-wait" class="mode-wait" hidden>Please stand by. Reading the plans and preparing the first page. Large sets can take a minute. The options will enable when ready.</div>
+    <div class="mode-opts" id="mode-opts">
+      <button class="btn" id="mode-resume" hidden>Resume unfinished run<span id="mode-resume-info"></span></button>
       <button class="btn" id="mode-manual">Fully manual<span>You draw every box yourself.</span></button>
       <button class="btn" id="mode-semi">Semi-automatic<span>The model marks each page as you open it. You check every box before applying.</span></button>
       <button class="btn" id="mode-auto">Fully automatic<span>Marks seals on every page. You review the pages, then click Lock in Redactions.</span></button>
@@ -254,6 +260,7 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     </div>
     <div class="ov-list" id="ov-list" hidden></div>
     <div class="card-foot">
+      <button class="btn" id="ov-stop" hidden>Stop and Resume Later</button>
       <button class="btn primary" id="ov-resume" hidden>Resume</button>
       <button class="btn primary" id="ov-close" hidden>Close</button>
     </div>
@@ -348,6 +355,10 @@ function progStart(total, title = 'Applying redactions') {
   $('ov-close').hidden = true;
   $('ov-close').textContent = 'Close';
   $('ov-resume').hidden = true;
+  const stopBtn = $('ov-stop');
+  stopBtn.hidden = false;
+  stopBtn.disabled = false;
+  stopBtn.textContent = title === 'Finding seals' ? 'Cancel' : 'Stop and Resume Later';
   $('ov-list').hidden = true;
   $('ov-list').innerHTML = '';
   ov.hidden = false;
@@ -367,6 +378,7 @@ function progFinish(name) {
   prog.active = false;
   clearInterval(progTimer);
   progDraw();
+  $('ov-stop').hidden = true;
   fill.style.width = '100%';
   $('ov-title').textContent = 'Redaction complete';
   $('ov-title').className = 'card-title ok';
@@ -379,6 +391,7 @@ function progFinish(name) {
 function progFail(e, onResume) {
   prog.active = false;
   clearInterval(progTimer);
+  $('ov-stop').hidden = true;
   fill.classList.add('err');
   $('ov-title').textContent = 'Stopped with an error';
   $('ov-file').textContent = e.message;
@@ -390,7 +403,19 @@ function progFail(e, onResume) {
   resume.onclick = () => { resume.hidden = true; onResume(); };
   msg('Redaction stopped: ' + e.message + (onResume ? ' Click Resume to continue.' : ''));
 }
-$('ov-close').onclick = () => { ov.hidden = true; applyJob = null; autoJob = null; runBusy = false; };
+// A stopped or failed run keeps its saved progress, so closing the popup does not discard it.
+$('ov-close').onclick = () => {
+  ov.hidden = true;
+  if (applyJob && applyJob.status === 'stopped') return;
+  applyJob = null; autoJob = null; runBusy = false;
+};
+$('ov-stop').onclick = () => {
+  stopRequested = true;
+  const b = $('ov-stop');
+  b.disabled = true;
+  b.textContent = 'Stopping...';
+  progLabel('Stopping after the current page. Please stand by.');
+};
 
 // Browsers cannot open File Explorer or show files in a folder picker, so the
 // finished files are listed here. Each one opens in a browser tab, where it can
@@ -481,11 +506,34 @@ function entryFor(fi, pno) {
 }
 
 let modeChoice = null;   // 'manual' | 'semi' | 'auto', asked each time a plans folder opens
-function askMode() {
+// Shows the popup right away in a stand-by state, so the wait is not mistaken for a stall.
+function modeWait(on) {
+  $('mode-wait').hidden = !on;
+  ['mode-manual', 'mode-semi', 'mode-auto', 'mode-resume'].forEach(id => { $(id).disabled = on; });
+  $('mode-note').textContent = '';
+  $('mode').hidden = !on;
+}
+// found: an unfinished run in this plans folder, or null. It is offered first, above the three options.
+function askMode(found = null) {
   const modelOk = !!(window.sealDetect && window.sealDetect.isLoaded());
+  $('mode-wait').hidden = true;
+  $('mode-manual').disabled = false;
   $('mode-semi').disabled = !modelOk;
   $('mode-auto').disabled = !modelOk;
   $('mode-note').textContent = modelOk ? '' : 'The seal model did not load, so only fully manual redaction is available.';
+  const resumeBtn = $('mode-resume');
+  resumeBtn.hidden = !found;
+  resumeBtn.disabled = false;
+  if (found) {
+    const st = found.state;
+    const done = pagesBefore(st.nextFile) + st.nextPage - 1;
+    $('mode-resume-info').textContent = `Stopped ${new Date(st.saved_at).toLocaleString()}. ${done} of ${pages.length} page(s) already redacted and kept. Nothing is redacted twice.`;
+    resumeBtn.onclick = async () => {
+      $('mode').hidden = true;
+      if (await resumeFromDisk(found)) await resumeInSession();
+      else askMode(null);
+    };
+  }
   $('mode').hidden = false;
 }
 function chooseMode(m) {
@@ -504,11 +552,16 @@ async function choosePlans() {
   let dir;
   try { dir = await window.showDirectoryPicker({ mode: 'readwrite' }); }
   catch (e) { return; }   // cancelled
+  if (runBusy) { msg('Wait for the current run to stop first.'); return; }
+  applyJob = null;
+  autoJob = null;
   plansDir = dir;
   outDir = dir;
   setChip('dot-plans', 'p-plans', true, dir.name);
   setChip('dot-out', 'p-out', true, dir.name + ' (new "Redacted Documents" folder)');
-  msg('Scanning for PDFs...');
+  modeChoice = null;
+  modeWait(true);
+  msg('Please stand by. Scanning for PDFs...');
   files = await collectPdfs(dir);
   review = new Map();
   docCache.forEach(d => d.destroy());
@@ -520,15 +573,15 @@ async function choosePlans() {
     for (let pno = 1; pno <= doc.numPages; pno++) pages.push({ fi, pno });
   }
   if (!pages.length) {
+    modeWait(false);
     showEmpty(true);
     msg('No PDF files found in that folder.');
     return;
   }
   msg(`${files.length} file(s), ${pages.length} page(s)`);
-  modeChoice = null;
   autoRunUsed = false;
   await show(0);
-  askMode();
+  askMode(await findStoppedRun());
 }
 
 async function chooseOutput() {
@@ -741,21 +794,46 @@ document.addEventListener('keydown', e => {
 });
 
 // ---- Redaction ----
-// Renders one PDF, paints the boxes solid black in the image, checks them, and
-// builds a new PDF from those flattened images. Also saves unredacted page
-// images and boxes for later model training when trainDir is given.
-async function redactPdf(bytes, boxesByPage, trainDir, stem, rel) {
+// Each redacted page is saved to a hidden _work folder inside the run folder, and the run's
+// state is saved after every page. If the run stops (Stop and Resume Later, an error, or the
+// computer shutting down), the next run continues from the last saved page. Saved page images
+// are already redacted, so no unredacted copies are kept in the work folder.
+const WORK_DIR = '_work';
+let stopRequested = false;   // set by the Stop and Resume Later button (or Cancel while finding seals)
+class StopRequest extends Error {
+  constructor() { super('Stopped by the user'); this.name = 'StopRequest'; }
+}
+function checkStop() { if (stopRequested) throw new StopRequest(); }
+
+async function readJson(dir, name) {
+  try { return JSON.parse(await (await (await dir.getFileHandle(name)).getFile()).text()); }
+  catch (e) { return null; }
+}
+
+// Redacts one PDF. Pages before ctl.startPage were redacted in an earlier run and are reused
+// from their saved images. Each new page is saved, then ctl.checkpoint(pageNumber) runs.
+async function redactPdf(bytes, boxesByPage, trainDir, stem, rel, ctl) {
   const src = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
   const out = await PDFLib.PDFDocument.create();
-  const problems = [];
   let boxCount = 0;
   for (let p = 1; p <= src.numPages; p++) {
-    msg(`Redacting ${rel}: page ${p} of ${src.numPages}`);
-    progLabel(`${rel}, page ${p} of ${src.numPages}`);
     const page = await src.getPage(p);
     const pts = page.getViewport({ scale: 1 });
     const boxes = boxesByPage[p - 1] || [];
     boxCount += boxes.length;
+    const imgName = 'p' + String(p).padStart(4, '0') + '.jpg';
+
+    if (p < ctl.startPage) {
+      // Redacted before the run stopped: reuse the saved image.
+      const saved = await (await ctl.fileDir.getFileHandle(imgName)).getFile();
+      const img = await out.embedJpg(new Uint8Array(await saved.arrayBuffer()));
+      out.addPage([pts.width, pts.height]).drawImage(img, { x: 0, y: 0, width: pts.width, height: pts.height });
+      continue;
+    }
+
+    checkStop();
+    msg(`Redacting ${rel}: page ${p} of ${src.numPages}`);
+    progLabel(`${rel}, page ${p} of ${src.numPages}`);
 
     if (trainDir) {
       // Unredacted image at fixed review resolution, for training. Not affected by zoom.
@@ -789,24 +867,50 @@ async function redactPdf(bytes, boxesByPage, trainDir, stem, rel) {
 
     rctx.fillStyle = '#000';
     rects.forEach(r => rctx.fillRect(r.x, r.y, r.w, r.h));
+    const pageProblems = [];
     rects.forEach((r, i) => {
       const d = rctx.getImageData(r.x, r.y, r.w, r.h).data;
       let sum = 0;
       for (let j = 0; j < d.length; j += 4) sum += (d[j] + d[j + 1] + d[j + 2]) / 3;
-      if (sum / (d.length / 4) > VERIFY_MAX) problems.push(`page ${p}: box ${i + 1} is not solid black`);
+      if (sum / (d.length / 4) > VERIFY_MAX) pageProblems.push(`page ${p}: box ${i + 1} is not solid black`);
     });
+    ctl.problems[rel + '|' + p] = pageProblems;
 
     const jpg = await canvasJpeg(rc, JPEG_Q);
+    await writeFile(ctl.fileDir, imgName, jpg);
     const img = await out.embedJpg(jpg);
-    const op = out.addPage([pts.width, pts.height]);
-    op.drawImage(img, { x: 0, y: 0, width: pts.width, height: pts.height });
+    out.addPage([pts.width, pts.height]).drawImage(img, { x: 0, y: 0, width: pts.width, height: pts.height });
     rc.width = 0;
     rc.height = 0;
     progTick();
+    await ctl.checkpoint(p);
   }
   const numPages = src.numPages;
   src.destroy();
-  return { bytes: await out.save(), problems, numPages, boxCount };
+  return { bytes: await out.save(), numPages, boxCount };
+}
+
+// Only one run at a time. A stopped run keeps its place, so Lock in Redactions or Resume continues it.
+let runBusy = false;
+let applyJob = null;   // redaction run in progress, or stopped and waiting to resume
+let autoJob = null;    // seal-finding pass in progress
+let autoRunUsed = false; // true once automatic seal-finding has run on this plans folder
+function pendingRun() { return !!(applyJob || autoJob); }
+function pagesBefore(fi) { return pages.filter(p => p.fi < fi).length; }
+
+function snapshotJob() {
+  const j = applyJob;
+  return {
+    version: 1, status: j.status, saved_at: new Date().toISOString(),
+    auto: j.auto, runStamp: j.runStamp, ts: j.ts, planFolder: plansDir.name,
+    files: files.map(f => f.rel), nextFile: j.nextFile, nextPage: j.nextPage,
+    srcDigests: j.srcDigests, boxes: j.boxes, problems: j.problems, logRows: j.logRows,
+  };
+}
+async function saveJob(status) {
+  if (!applyJob) return;
+  if (status) applyJob.status = status;
+  await writeFile(applyJob.workDir, 'state.json', JSON.stringify(snapshotJob()));
 }
 
 async function applyAllInner(force, auto = false) {
@@ -819,69 +923,157 @@ async function applyAllInner(force, auto = false) {
   // One timestamp for the whole run, so the folder and every training file can be searched and copied together.
   const runStamp = stamp();
   const runDir = await outDir.getDirectoryHandle('Redacted Documents ' + (auto ? 'AUTO ' : '') + runStamp, { create: true });
-  lastRunDir = runDir;
+  const workDir = await runDir.getDirectoryHandle(WORK_DIR, { create: true });
+  // Boxes are copied now, so later edits on screen do not change a run already under way.
+  const boxesAll = {};
+  pages.forEach(p => {
+    const key = files[p.fi].rel + '|' + p.pno;
+    const e = review.get(key);
+    if (e && e.boxes.length) boxesAll[key] = e.boxes.map(b => b.slice());
+  });
   // Automatic runs write no training data: their boxes have not been checked by a person.
-  const trainDir = auto ? null : await runDir.getDirectoryHandle('Training ' + runStamp, { create: true });
-  const logRows = [['timestamp', 'source', 'source_sha256', 'output', 'output_sha256', 'pages', 'boxes', 'status', 'problems']];
-  const ts = new Date().toISOString();
-  applyJob = { auto, runStamp, runDir, trainDir, logRows, ts, nextFile: 0 };
+  applyJob = {
+    status: 'running', auto, runStamp, runDir, workDir,
+    trainDir: auto ? null : await runDir.getDirectoryHandle('Training ' + runStamp, { create: true }),
+    logRows: [['timestamp', 'source', 'source_sha256', 'output', 'output_sha256', 'pages', 'boxes', 'status', 'problems']],
+    ts: new Date().toISOString(), nextFile: 0, nextPage: 1,
+    srcDigests: {}, boxes: boxesAll, problems: {},
+  };
+  await saveJob();
   return runApplyJob();
 }
 
-// Runs the redaction job. If it stops, the job keeps its place, so Resume continues from the file that failed.
+// Runs the redaction job from its saved place. A stop or error keeps the place, so Resume continues.
 async function runApplyJob() {
-  const { auto, runStamp, runDir, trainDir, logRows, ts } = applyJob;
+  const job = applyJob;
+  stopRequested = false;
+  job.status = 'running';
+  lastRunDir = job.runDir;
   progStart(pages.length);
-  prog.done = pagesBefore(applyJob.nextFile);
+  prog.done = pagesBefore(job.nextFile) + (job.nextPage - 1);
   progDraw();
   try {
-  for (let fi = applyJob.nextFile; fi < files.length; fi++) {
-    applyJob.nextFile = fi;
-    const f = files[fi];
-    const stem = stemOf(f.rel);
-    msg(`File ${fi + 1} of ${files.length}: ${f.name}`);
-    const bytes = new Uint8Array(await (await f.handle.getFile()).arrayBuffer());
-    const srcDigest = await sha256Hex(bytes);
-    const boxesByPage = {};
-    const nPages = pages.filter(p => p.fi === fi).length;
-    for (let pno = 1; pno <= nPages; pno++) {
-      const e = review.get(f.rel + '|' + pno);
-      if (e && e.boxes.length) boxesByPage[pno - 1] = e.boxes;
+    for (let fi = job.nextFile; fi < files.length; fi++) {
+      checkStop();
+      job.nextFile = fi;
+      const f = files[fi];
+      const stem = stemOf(f.rel);
+      msg(`File ${fi + 1} of ${files.length}: ${f.name}`);
+      const bytes = new Uint8Array(await (await f.handle.getFile()).arrayBuffer());
+      const srcDigest = await sha256Hex(bytes);
+      if (job.nextPage > 1 && job.srcDigests[f.rel] !== srcDigest) {
+        // The file changed since the run stopped, so it is redacted again from its first page.
+        job.nextPage = 1;
+        prog.done = pagesBefore(fi);
+        progDraw();
+      }
+      job.srcDigests[f.rel] = srcDigest;
+      const boxesByPage = {};
+      const nPages = pages.filter(p => p.fi === fi).length;
+      for (let pno = 1; pno <= nPages; pno++) {
+        const b = job.boxes[f.rel + '|' + pno];
+        if (b && b.length) boxesByPage[pno - 1] = b;
+      }
+      const fileDir = await job.workDir.getDirectoryHandle('f' + fi, { create: true });
+      const result = await redactPdf(bytes, boxesByPage, job.trainDir, job.runStamp + '_' + stem, f.rel, {
+        startPage: job.nextPage, fileDir, problems: job.problems,
+        checkpoint: async p => { job.nextPage = p + 1; await saveJob(); },
+      });
+      const problems = [];
+      for (let p = 1; p <= result.numPages; p++) (job.problems[f.rel + '|' + p] || []).forEach(x => problems.push(x));
+      const status = problems.length ? 'FAILED_VERIFICATION' : 'VERIFIED';
+      await writeFile(job.runDir, stem + '_REDACTED.pdf', result.bytes);
+      const outDigest = await sha256Hex(result.bytes);
+      const record = {
+        mode: job.auto ? 'automatic, no page review' : 'reviewed by a person', source: f.rel, sha256: srcDigest, pages: result.numPages,
+        redacted_at: job.ts, output: stem + '_REDACTED.pdf', output_sha256: outDigest,
+        boxes: boxesByPage, boxes_applied: result.boxCount,
+        verification: status, problems,
+      };
+      await writeFile(job.runDir, stem + '_REDACTION_RECORD.json', JSON.stringify(record, null, 2));
+      const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+      job.logRows.push([job.ts, f.rel, srcDigest, stem + '_REDACTED.pdf', outDigest, result.numPages,
+        result.boxCount, status, problems.join('; ')].map(esc));
+      // The file is complete, so its saved page images are no longer needed.
+      job.nextFile = fi + 1;
+      job.nextPage = 1;
+      await saveJob();
+      try { await job.workDir.removeEntry('f' + fi, { recursive: true }); } catch (e) { console.warn(e); }
     }
-    const result = await redactPdf(bytes, boxesByPage, trainDir, runStamp + '_' + stem, f.rel);
-    const status = result.problems.length ? 'FAILED_VERIFICATION' : 'VERIFIED';
-    await writeFile(runDir, stem + '_REDACTED.pdf', result.bytes);
-    const outDigest = await sha256Hex(result.bytes);
-    const record = {
-      mode: auto ? 'automatic, no page review' : 'reviewed by a person', source: f.rel, sha256: srcDigest, pages: result.numPages,
-      redacted_at: ts, output: stem + '_REDACTED.pdf', output_sha256: outDigest,
-      boxes: boxesByPage, boxes_applied: result.boxCount,
-      verification: status, problems: result.problems,
-    };
-    await writeFile(runDir, stem + '_REDACTION_RECORD.json', JSON.stringify(record, null, 2));
-    const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
-    logRows.push([ts, f.rel, srcDigest, stem + '_REDACTED.pdf', outDigest, result.numPages,
-      result.boxCount, status, result.problems.join('; ')].map(esc));
-  }
-  applyJob.nextFile = files.length;
-  await writeFile(runDir, 'audit_log.csv', logRows.map(r => r.join(',')).join('\n') + '\n');
-  applyJob = null;
-  progFinish(runDir.name);
+    job.nextFile = files.length;
+    await writeFile(job.runDir, 'audit_log.csv', job.logRows.map(r => r.join(',')).join('\n') + '\n');
+    try { await job.runDir.removeEntry(WORK_DIR, { recursive: true }); } catch (e) { console.warn(e); }
+    applyJob = null;
+    progFinish(job.runDir.name);
   } catch (e) {
-    progFail(e, runApplyJob);
+    await saveJob('stopped').catch(err => console.warn(err));
+    if (e instanceof StopRequest) progStopped();
+    else progFail(e, resumeInSession);
   }
 }
 
-// Only one run at a time. A run that stopped and is waiting to resume also counts as running.
-let runBusy = false;
-let applyJob = null;   // redaction run in progress, or stopped and waiting to resume
-let autoJob = null;    // seal-finding pass in progress, or stopped and waiting to resume
-let autoRunUsed = false; // true once automatic seal-finding has run on this plans folder
-function pendingRun() { return !!(applyJob || autoJob); }
-function pagesBefore(fi) { return pages.filter(p => p.fi < fi).length; }
+function progStopped() {
+  prog.active = false;
+  clearInterval(progTimer);
+  progDraw();
+  $('ov-stop').hidden = true;
+  const done = pagesBefore(applyJob.nextFile) + applyJob.nextPage - 1;
+  $('ov-title').textContent = 'Stopped. Your progress is saved.';
+  $('ov-title').className = 'card-title';
+  $('ov-file').textContent = `${done} of ${pages.length} page(s) already redacted. Nothing is lost.`;
+  $('ov-eta').textContent = 'To finish later, open this app, choose the same plans folder, and click Resume unfinished run.';
+  const resume = $('ov-resume');
+  resume.hidden = false;
+  resume.onclick = () => { resume.hidden = true; resumeInSession(); };
+  $('ov-close').textContent = 'Close';
+  $('ov-close').hidden = false;
+  msg('Stopped. Progress is saved. Choose the same plans folder and click Resume unfinished run to finish.');
+}
+
+// Finds an unfinished run in the output folder for this plans folder, if there is one.
+async function findStoppedRun() {
+  if (!outDir || !plansDir) return null;
+  for await (const [name, h] of outDir.entries()) {
+    if (h.kind !== 'directory' || !name.startsWith('Redacted Documents')) continue;
+    let work;
+    try { work = await h.getDirectoryHandle(WORK_DIR); } catch (e) { continue; }
+    const st = await readJson(work, 'state.json');
+    // 'running' here means the computer or browser closed during a run.
+    if (st && (st.status === 'stopped' || st.status === 'running') && st.planFolder === plansDir.name) {
+      return { runDir: h, workDir: work, state: st };
+    }
+  }
+  return null;
+}
+
+// Loads a saved run so it can continue. Returns false if the plans folder no longer matches.
+async function resumeFromDisk(found) {
+  const st = found.state;
+  if (JSON.stringify(st.files) !== JSON.stringify(files.map(f => f.rel))) {
+    msg('The plans folder has changed since that run stopped, so it cannot be resumed. Start a new run instead.');
+    return false;
+  }
+  applyJob = {
+    status: 'stopped', auto: !!st.auto, runStamp: st.runStamp, runDir: found.runDir, workDir: found.workDir,
+    trainDir: st.auto ? null : await found.runDir.getDirectoryHandle('Training ' + st.runStamp, { create: true }),
+    logRows: st.logRows, ts: st.ts, nextFile: st.nextFile, nextPage: st.nextPage,
+    srcDigests: st.srcDigests || {}, boxes: st.boxes || {}, problems: st.problems || {},
+  };
+  autoRunUsed = !!st.auto;
+  msg(`Resuming the run stopped ${new Date(st.saved_at).toLocaleString()}.`);
+  return true;
+}
+
+async function resumeInSession() {
+  if (runBusy || !applyJob) return;
+  runBusy = true;
+  try { await runApplyJob(); } finally { runBusy = false; }
+}
 
 async function applyAll(force, auto = false) {
-  if (runBusy || pendingRun()) { msg('A redaction run is already in progress or waiting to resume.'); return; }
+  if (runBusy) { msg('A run is already in progress.'); return; }
+  if (applyJob && applyJob.status === 'stopped') { await resumeInSession(); return; }
+  if (autoJob) { msg('Seal search is in progress.'); return; }
   runBusy = true;
   try { await applyAllInner(force, auto); } finally { runBusy = false; }
 }
@@ -892,7 +1084,7 @@ async function applyAll(force, auto = false) {
 async function autoRedactAll() {
   if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
   if (!(window.sealDetect && window.sealDetect.isLoaded())) { msg('Load the seal model first.'); return; }
-  if (runBusy || pendingRun()) { msg('A redaction run is already in progress or waiting to resume.'); return; }
+  if (runBusy || pendingRun()) { msg('Finish or resume the unfinished run first.'); return; }
   const ok = confirm(`Find seals on all ${pages.length} page(s)?\n\n` +
     'Nothing is locked in yet. You will review the pages, then click Lock in Redactions. ' +
     'Your original files are not changed.');
@@ -904,14 +1096,16 @@ async function autoRedactAll() {
   runBusy = false;
 }
 
-// Finds seals page by page, then starts the redaction. Resume continues from the page that failed.
+// Finds seals page by page, then offers to redact. Cancel keeps the seals found so far.
 async function runDetection() {
   const job = autoJob;
+  stopRequested = false;
   progStart(pages.length, 'Finding seals');
   prog.done = job.next;
   progDraw();
   try {
     for (let i = job.next; i < pages.length; i++) {
+      checkStop();
       job.next = i;
       const { fi, pno } = pages[i];
       const e = entryFor(fi, pno);
@@ -927,11 +1121,22 @@ async function runDetection() {
     autoRunUsed = true;
     prog.active = false;
     clearInterval(progTimer);
+    $('ov-stop').hidden = true;
     ov.hidden = true;
     if (curIdx >= 0) await show(curIdx);
     const withBoxes = pages.filter(p => entryFor(p.fi, p.pno).boxes.length).length;
     msg(`Seals marked on ${withBoxes} of ${pages.length} page(s). Review each page, then click Lock in Redactions.`);
   } catch (err) {
+    if (err instanceof StopRequest) {
+      autoJob = null;
+      prog.active = false;
+      clearInterval(progTimer);
+      $('ov-stop').hidden = true;
+      ov.hidden = true;
+      if (curIdx >= 0) await show(curIdx);
+      msg('Seal search cancelled. Seals found so far are kept. Click Find seals automatically to continue.');
+      return;
+    }
     console.error(err);
     progFail(err, runDetection);
   }
