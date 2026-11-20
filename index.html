@@ -295,7 +295,7 @@ function fmtDur(s) {
   return s < 60 ? `${Math.round(s)} sec` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} sec`;
 }
 function progDraw() {
-  const pct = prog.total ? prog.done / prog.total : 0;
+  const pct = prog.total ? Math.min(1, prog.done / prog.total) : 0;
   fill.style.width = (pct * 100).toFixed(1) + '%';
   $('ov-pct').textContent = Math.floor(pct * 100) + '%';
   $('ov-count').textContent = `${prog.done} of ${prog.total} pages`;
@@ -752,7 +752,7 @@ async function redactPdf(bytes, boxesByPage, trainDir, stem, rel) {
   return { bytes: await out.save(), problems, numPages, boxCount };
 }
 
-async function applyAll(force, auto = false) {
+async function applyAllInner(force, auto = false) {
   if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
   saveCurrent(!auto);
   const unreviewed = pages.filter(p => !review.get(files[p.fi].rel + '|' + p.pno)?.reviewed).length;
@@ -804,17 +804,28 @@ async function applyAll(force, auto = false) {
   }
 }
 
+// Only one run at a time, so the progress counter is never shared by two runs.
+let runBusy = false;
+async function applyAll(force, auto = false) {
+  if (runBusy) { msg('A redaction run is already in progress.'); return; }
+  runBusy = true;
+  try { await applyAllInner(force, auto); } finally { runBusy = false; }
+}
+
 // Redacts every page using the model's boxes, with no page-by-page review.
 // Pages a person has reviewed, or already marked by hand, keep their boxes.
 // Output goes to a folder named "AUTO", with no training data.
 async function autoRedactAll() {
   if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
   if (!(window.sealDetect && window.sealDetect.isLoaded())) { msg('Load the seal model first.'); return; }
+  if (runBusy) { msg('A redaction run is already in progress.'); return; }
   const ok = confirm(`Redact all ${pages.length} page(s) automatically?\n\n` +
     'No one will review these pages before they are redacted. Only the model\'s boxes will be applied. ' +
     'The output goes to a new folder named AUTO. Your original files are not changed. ' +
     'Check the output before releasing it.');
   if (!ok) { msg('Automatic redaction cancelled.'); return; }
+  if (runBusy) { msg('A redaction run is already in progress.'); return; }
+  runBusy = true;
   try {
     saveCurrent(false);
     progStart(pages.length, 'Finding seals');
@@ -829,10 +840,12 @@ async function autoRedactAll() {
       }
       progTick();
     }
-    await applyAll(true, true);
+    await applyAllInner(true, true);
   } catch (err) {
     console.error(err);
     progFail(err);
+  } finally {
+    runBusy = false;
   }
 }
 
