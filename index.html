@@ -96,7 +96,7 @@ kbd{font-weight:600;font-size:10.5px;font-family:inherit;padding:3px 6px;border-
 .contact a:hover{text-decoration:underline}
 /* ---------- falling-streak background ---------- */
 #rain{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:0;background:transparent;box-shadow:none;border-radius:0}
-body > :not(#rain):not(#ov){position:relative;z-index:1}
+body > :not(#rain):not(#ov):not(#review-note){position:relative;z-index:1}
 #warn{padding:10px 16px;background:rgba(255,107,107,.12);color:#ffb3b3;border-bottom:1px solid rgba(255,107,107,.3);display:none}
 [hidden]{display:none !important}
 
@@ -132,7 +132,9 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
 .mode-wait{margin-top:14px;padding:10px 12px;border-radius:8px;background:rgba(47,111,191,.16);border:1px solid #2F6FBF;color:#C9D6E8;font-size:14px;line-height:1.45}
 .mode-wait[hidden]{display:none}
 #mode-resume{border:1.5px solid #2F6FBF;background:rgba(47,111,191,.16)}
-#mode-resume[hidden],#ov-stop[hidden]{display:none}
+#mode-resume[hidden],#ov-stop[hidden],#review-note[hidden]{display:none}
+.review-steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:1.55;color:#C9D6E8}
+.review-steps li{margin-bottom:6px}
 </style></head><body>
 <canvas id="rain" aria-hidden="true"></canvas>
 
@@ -248,6 +250,18 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
 </footer>
 <div class="contact">For assistance or questions about this page, please email <a href="mailto:bryan.webb@carync.gov">bryan.webb@carync.gov</a></div>
 
+<div id="review-note" class="ov" hidden>
+  <div class="card">
+    <div class="card-title">Review the redactions before you lock in</div>
+    <div class="card-file">Seals were marked on every page automatically. Nothing is locked yet.</div>
+    <ol class="review-steps">
+      <li>Review every page.</li>
+      <li>Remove, edit, or add any redactions that are needed.</li>
+      <li>Click the orange <b>Lock in Redactions</b> button. This flattens the pages and saves the redacted files.</li>
+    </ol>
+    <div class="card-foot"><button class="btn primary" id="review-ok">OK, I understand</button></div>
+  </div>
+</div>
 <div id="ov" class="ov" hidden>
   <div class="card">
     <div class="card-title" id="ov-title">Applying redactions</div>
@@ -409,6 +423,7 @@ $('ov-close').onclick = () => {
   if (applyJob && applyJob.status === 'stopped') return;
   applyJob = null; autoJob = null; runBusy = false;
 };
+$('review-ok').onclick = () => { $('review-note').hidden = true; };
 $('ov-stop').onclick = () => {
   stopRequested = true;
   const b = $('ov-stop');
@@ -1126,6 +1141,7 @@ async function runDetection() {
     if (curIdx >= 0) await show(curIdx);
     const withBoxes = pages.filter(p => entryFor(p.fi, p.pno).boxes.length).length;
     msg(`Seals marked on ${withBoxes} of ${pages.length} page(s). Review each page, then click Lock in Redactions.`);
+    $('review-note').hidden = false;
   } catch (err) {
     if (err instanceof StopRequest) {
       autoJob = null;
