@@ -114,6 +114,12 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
 .ov-row .btn{height:28px;padding:0 12px;font-size:12px}
 .ov-path{font-family:Consolas,"Cascadia Mono",monospace;font-size:12.5px;color:var(--text) !important;user-select:all}
 .ov-note{padding:9px 12px;font-size:12px;line-height:1.5;color:var(--muted);border-top:1px solid var(--line)}
+#mode[hidden]{display:none}
+.mode-opts{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.mode-opts .btn{height:auto;padding:12px 14px;text-align:left;display:flex;flex-direction:column;align-items:flex-start;gap:4px;font-weight:600}
+.mode-opts .btn span{font-size:13px;font-weight:400}
+.mode-opts .btn:disabled{opacity:.45;cursor:not-allowed}
+#mode-note{font-size:13px;color:#ffb3b3}
 </style></head><body>
 <canvas id="rain" aria-hidden="true"></canvas>
 
@@ -212,6 +218,18 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     <span><kbd>Del</kbd> remove box</span>
   </div>
 </footer>
+<div id="mode" class="ov" hidden>
+  <div class="card">
+    <div class="card-title">How do you want to redact this set?</div>
+    <div class="card-file">Pick one. The choice applies to this plans folder.</div>
+    <div class="mode-opts">
+      <button class="btn" id="mode-manual">Fully manual<span>You draw every box yourself.</span></button>
+      <button class="btn" id="mode-semi">Semi-automatic<span>The model marks each page as you open it. You check every box before applying.</span></button>
+      <button class="btn" id="mode-auto" style="background:#90EE90;border-color:#90EE90;color:#000">Fully automatic<span>Redacts every page with the model's boxes and no review. Output goes to a folder named AUTO.</span></button>
+    </div>
+    <div class="card-foot"><span id="mode-note"></span></div>
+  </div>
+</div>
 <div class="contact">For assistance or questions about this page, please email <a href="mailto:bryan.webb@carync.gov">bryan.webb@carync.gov</a></div>
 
 <div id="ov" class="ov" hidden>
@@ -445,6 +463,25 @@ function entryFor(fi, pno) {
   return review.get(key);
 }
 
+let modeChoice = null;   // 'manual' | 'semi' | 'auto', asked each time a plans folder opens
+function askMode() {
+  const modelOk = !!(window.sealDetect && window.sealDetect.isLoaded());
+  $('mode-semi').disabled = !modelOk;
+  $('mode-auto').disabled = !modelOk;
+  $('mode-note').textContent = modelOk ? '' : 'The seal model did not load, so only fully manual redaction is available.';
+  $('mode').hidden = false;
+}
+function chooseMode(m) {
+  modeChoice = m;
+  $('mode').hidden = true;
+  if (m === 'manual') msg('Manual redaction. Draw each box yourself.');
+  if (m === 'semi') {
+    msg('Semi-automatic. Each page is marked as you open it. Check every box.');
+    if (curIdx >= 0) autoDetectPage(curIdx);
+  }
+  if (m === 'auto') autoRedactAll();
+}
+
 async function choosePlans() {
   if (!window.showDirectoryPicker) { msg('This browser cannot choose folders. Use Edge or Chrome.'); return; }
   let dir;
@@ -471,7 +508,9 @@ async function choosePlans() {
     return;
   }
   msg(`${files.length} file(s), ${pages.length} page(s)`);
+  modeChoice = null;
   await show(0);
+  askMode();
 }
 
 async function chooseOutput() {
@@ -562,7 +601,7 @@ async function show(i) {
   const reviewedCount = [...review.values()].filter(v => v.reviewed).length;
   msg(`${files[fi].name}, page ${pno}  |  ${e.reviewed ? 'reviewed' : 'not yet reviewed'}  |  ${reviewedCount} of ${pages.length} reviewed`);
   updateReviewedChip();
-  if (window.autoDetectPage) autoDetectPage(i);
+  if (modeChoice === 'semi') autoDetectPage(i);
 }
 
 function saveCurrent(reviewed) {
@@ -850,6 +889,9 @@ async function autoRedactAll() {
 }
 
 $('b-auto').onclick = autoRedactAll;
+$('mode-manual').onclick = () => chooseMode('manual');
+$('mode-semi').onclick = () => chooseMode('semi');
+$('mode-auto').onclick = () => chooseMode('auto');
 $('b-plans').onclick = choosePlans;
 $('b-plans-2').onclick = choosePlans;
 $('b-out').onclick = chooseOutput;
