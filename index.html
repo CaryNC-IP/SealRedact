@@ -71,6 +71,12 @@ canvas{display:block;background:#fff;max-width:none;border-radius:3px;
 #empty .big svg{width:28px;height:28px;stroke:var(--accent-2);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 #empty h2{color:var(--text);font-size:17px;font-weight:650;margin:0 0 6px}
 #empty p{margin:0 0 18px;line-height:1.5}
+#empty .steps{text-align:left;margin:0 0 14px;padding-left:20px;line-height:1.5;font-size:13px}
+#empty .steps li{margin-bottom:8px}
+#empty .modes{margin:6px 0 0;padding-left:18px}
+#empty .modes li{margin-bottom:6px}
+#empty .tip{font-size:12px;margin:0 0 18px;text-align:left;line-height:1.5}
+#empty code{font-size:12px}
 
 /* ---------- footer ---------- */
 footer{display:flex;align-items:center;gap:14px;padding:8px 16px;border-top:1px solid var(--line);
@@ -180,7 +186,19 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
   <div id="empty">
     <div class="big"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
     <h2>Choose a plans folder to begin</h2>
-    <p>Pick the folder that holds the PDF plans. Redacted copies go into a new folder inside it, unless you choose a different output location.</p>
+    <ol class="steps">
+      <li><b>Load the seal model (once).</b> Click <b>Load seal model</b> and pick the app folder that holds <code>seal_v3.onnx</code> and the three <code>ort</code> files. Without the model you can still redact by hand.</li>
+      <li><b>Choose the plans folder.</b> Pick the folder with the PDF plans. Redacted copies go into a new folder inside it unless you choose an output location.</li>
+      <li><b>Pick how you want to work:</b>
+        <ul class="modes">
+          <li><b>Manual:</b> you draw every box. Drag on a page to draw, drag a box to move it, and press Delete to remove the selected box.</li>
+          <li><b>Pre-marked, with review:</b> with the model loaded, each page is marked as you open it. Check every box before you click <b>Apply redactions</b>.</li>
+          <li><b>Redact all automatically (green):</b> redacts every page with the model's boxes and no review. Output goes to a folder named AUTO. Check that output before you release it.</li>
+        </ul>
+      </li>
+      <li><b>Apply.</b> <b>Apply redactions</b> writes new redacted PDFs. Your original files are never changed.</li>
+    </ol>
+    <p class="tip">Arrow keys move between pages. Ctrl plus the mouse wheel zooms. Each output is checked to confirm its boxes are solid black before it is saved.</p>
     <button class="btn primary" id="b-plans-2" style="margin:0 auto"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Choose plans folder</button>
   </div>
   <canvas id="c" style="display:none"></canvas>
