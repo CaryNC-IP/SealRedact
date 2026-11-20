@@ -532,7 +532,7 @@ async function chooseOutput() {
 
 // ---- Page review ----
 function showEmpty(on) {
-  $('empty').style.display = on ? 'flex' : 'none';
+  $('empty').style.display = on ? '' : 'none';   // '' uses the normal stacked layout
   c.style.display = on ? 'none' : 'block';
   if (on) $('pos').innerHTML = 'Page 0 of 0';
 }
