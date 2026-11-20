@@ -246,6 +246,7 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     </div>
     <div class="ov-list" id="ov-list" hidden></div>
     <div class="card-foot">
+      <button class="btn primary" id="ov-resume" hidden>Resume</button>
       <button class="btn primary" id="ov-close" hidden>Close</button>
     </div>
   </div>
@@ -337,6 +338,8 @@ function progStart(total, title = 'Applying redactions') {
   $('ov-title').className = 'card-title';
   $('ov-file').textContent = 'Starting...';
   $('ov-close').hidden = true;
+  $('ov-close').textContent = 'Close';
+  $('ov-resume').hidden = true;
   $('ov-list').hidden = true;
   $('ov-list').innerHTML = '';
   ov.hidden = false;
@@ -365,17 +368,21 @@ function progFinish(name) {
   showOutputList();
   msg(`Done. Saved to "${name}".`);
 }
-function progFail(e) {
+function progFail(e, onResume) {
   prog.active = false;
   clearInterval(progTimer);
   fill.classList.add('err');
   $('ov-title').textContent = 'Stopped with an error';
   $('ov-file').textContent = e.message;
-  $('ov-eta').textContent = '';
+  $('ov-eta').textContent = onResume ? 'Resume picks up at the file or page that failed.' : '';
+  $('ov-close').textContent = onResume ? 'Cancel' : 'Close';
   $('ov-close').hidden = false;
-  msg('Redaction stopped: ' + e.message);
+  const resume = $('ov-resume');
+  resume.hidden = !onResume;
+  resume.onclick = () => { resume.hidden = true; onResume(); };
+  msg('Redaction stopped: ' + e.message + (onResume ? ' Click Resume to continue.' : ''));
 }
-$('ov-close').onclick = () => { ov.hidden = true; };
+$('ov-close').onclick = () => { ov.hidden = true; applyJob = null; autoJob = null; runBusy = false; };
 
 // Browsers cannot open File Explorer or show files in a folder picker, so the
 // finished files are listed here. Each one opens in a browser tab, where it can
@@ -808,9 +815,19 @@ async function applyAllInner(force, auto = false) {
   const trainDir = auto ? null : await runDir.getDirectoryHandle('Training ' + runStamp, { create: true });
   const logRows = [['timestamp', 'source', 'source_sha256', 'output', 'output_sha256', 'pages', 'boxes', 'status', 'problems']];
   const ts = new Date().toISOString();
+  applyJob = { auto, runStamp, runDir, trainDir, logRows, ts, nextFile: 0 };
+  return runApplyJob();
+}
+
+// Runs the redaction job. If it stops, the job keeps its place, so Resume continues from the file that failed.
+async function runApplyJob() {
+  const { auto, runStamp, runDir, trainDir, logRows, ts } = applyJob;
   progStart(pages.length);
+  prog.done = pagesBefore(applyJob.nextFile);
+  progDraw();
   try {
-  for (let fi = 0; fi < files.length; fi++) {
+  for (let fi = applyJob.nextFile; fi < files.length; fi++) {
+    applyJob.nextFile = fi;
     const f = files[fi];
     const stem = stemOf(f.rel);
     msg(`File ${fi + 1} of ${files.length}: ${f.name}`);
@@ -837,18 +854,24 @@ async function applyAllInner(force, auto = false) {
     logRows.push([ts, f.rel, srcDigest, stem + '_REDACTED.pdf', outDigest, result.numPages,
       result.boxCount, status, result.problems.join('; ')].map(esc));
   }
+  applyJob.nextFile = files.length;
   await writeFile(runDir, 'audit_log.csv', logRows.map(r => r.join(',')).join('\n') + '\n');
+  applyJob = null;
   progFinish(runDir.name);
   } catch (e) {
-    progFail(e);
-    throw e;
+    progFail(e, runApplyJob);
   }
 }
 
-// Only one run at a time, so the progress counter is never shared by two runs.
+// Only one run at a time. A run that stopped and is waiting to resume also counts as running.
 let runBusy = false;
+let applyJob = null;   // redaction run in progress, or stopped and waiting to resume
+let autoJob = null;    // seal-finding pass in progress, or stopped and waiting to resume
+function pendingRun() { return !!(applyJob || autoJob); }
+function pagesBefore(fi) { return pages.filter(p => p.fi < fi).length; }
+
 async function applyAll(force, auto = false) {
-  if (runBusy) { msg('A redaction run is already in progress.'); return; }
+  if (runBusy || pendingRun()) { msg('A redaction run is already in progress or waiting to resume.'); return; }
   runBusy = true;
   try { await applyAllInner(force, auto); } finally { runBusy = false; }
 }
@@ -859,18 +882,28 @@ async function applyAll(force, auto = false) {
 async function autoRedactAll() {
   if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
   if (!(window.sealDetect && window.sealDetect.isLoaded())) { msg('Load the seal model first.'); return; }
-  if (runBusy) { msg('A redaction run is already in progress.'); return; }
+  if (runBusy || pendingRun()) { msg('A redaction run is already in progress or waiting to resume.'); return; }
   const ok = confirm(`Redact all ${pages.length} page(s) automatically?\n\n` +
     'No one will review these pages before they are redacted. Only the model\'s boxes will be applied. ' +
     'The output goes to a new folder named AUTO. Your original files are not changed. ' +
     'Check the output before releasing it.');
   if (!ok) { msg('Automatic redaction cancelled.'); return; }
-  if (runBusy) { msg('A redaction run is already in progress.'); return; }
   runBusy = true;
+  saveCurrent(false);
+  autoJob = { next: 0 };
+  await runDetection();
+  runBusy = false;
+}
+
+// Finds seals page by page, then starts the redaction. Resume continues from the page that failed.
+async function runDetection() {
+  const job = autoJob;
+  progStart(pages.length, 'Finding seals');
+  prog.done = job.next;
+  progDraw();
   try {
-    saveCurrent(false);
-    progStart(pages.length, 'Finding seals');
-    for (let i = 0; i < pages.length; i++) {
+    for (let i = job.next; i < pages.length; i++) {
+      job.next = i;
       const { fi, pno } = pages[i];
       const e = entryFor(fi, pno);
       progLabel(`${files[fi].name}, page ${pno}`);
@@ -881,12 +914,11 @@ async function autoRedactAll() {
       }
       progTick();
     }
+    autoJob = null;
     await applyAllInner(true, true);
   } catch (err) {
     console.error(err);
-    progFail(err);
-  } finally {
-    runBusy = false;
+    progFail(err, runDetection);
   }
 }
 
