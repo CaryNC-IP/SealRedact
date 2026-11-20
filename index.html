@@ -191,7 +191,7 @@ body > :not(#rain):not(#ov):not(#review-note){position:relative;z-index:1}
     <button class="btn icon" id="zoom-out" title="Zoom out (Ctrl + wheel, or -)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/></svg></button>
     <div class="pill" id="zoom" style="min-width:64px">100%</div>
     <button class="btn icon" id="zoom-in" title="Zoom in (Ctrl + wheel, or +)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg></button>
-    <button class="btn" id="fit" title="Fit page to width (0)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Fit</button>
+    <button class="btn" id="fit" title="Fit whole page in view (0)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Fit</button>
     <div class="spacer"></div>
     <button class="btn danger" id="del" title="Delete selected box (Delete)"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3"/></svg>Remove Redaction Box</button>
     <button class="btn primary" id="apply"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Lock in Redactions</button>
@@ -220,7 +220,7 @@ body > :not(#rain):not(#ov):not(#review-note){position:relative;z-index:1}
       </li>
       <li><b>Review, then lock in.</b> Check each page. <b>Remove Redaction Box</b> deletes the selected box. <b>Lock in Redactions</b> writes new redacted PDFs with the boxes you see. Your original files are never changed.</li>
     </ol>
-    <p class="tip">Arrow keys move between pages. Ctrl plus the mouse wheel zooms. Each output is checked to confirm its boxes are solid black before it is saved.</p>
+    <p class="tip">Each page opens fitted to the whole view. The mouse wheel zooms while the whole page is in view, and Ctrl plus the wheel zooms at any size. Each output is checked to confirm its boxes are solid black before it is saved.</p>
     <button class="btn primary" id="b-plans-2" style="margin:0 auto"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Choose plans folder</button>
   </div>
   <canvas id="c" style="display:none"></canvas>
@@ -617,6 +617,12 @@ function fitK() {
   const avail = Math.max(200, wrap.clientWidth - 56);
   return clampK(avail / ptsW);
 }
+// Zoom that shows the whole page in the visible area, width and height.
+function fitPageK() {
+  const availW = Math.max(200, wrap.clientWidth - 56);
+  const availH = Math.max(200, wrap.clientHeight - 56);
+  return clampK(Math.min(availW / ptsW, availH / ptsH));
+}
 function clampK(k) {
   if (!ptsW) return k;
   const maxK = Math.min(MAX_CANVAS_PX / ptsW, MAX_CANVAS_PX / ptsH, 8);
@@ -675,7 +681,7 @@ async function show(i) {
   ptsW = pts.width;
   ptsH = pts.height;
   curIdx = i;
-  K = fitK();
+  K = fitPageK();
   const e = entryFor(fi, pno);
   boxes = e.boxes.map(b => b.slice());
   sel = -1;
@@ -732,16 +738,19 @@ async function zoomAt(factor, clientX, clientY) {
   wrap.scrollTop += (nr.top + ptY * K) - cy;
 }
 
-async function fitWidth() {
+async function fitPage() {
   if (!curPage) return;
-  K = fitK();
+  K = fitPageK();
   await renderCurrent();
   wrap.scrollLeft = 0;
   wrap.scrollTop = 0;
 }
 
 wrap.addEventListener('wheel', e => {
-  if (!e.ctrlKey || !curPage) return;   // plain wheel still scrolls the page
+  if (!curPage) return;
+  const fits = c.width <= wrap.clientWidth && c.height <= wrap.clientHeight;
+  // Plain wheel zooms only when there is nothing to scroll; otherwise it scrolls the page.
+  if (!e.ctrlKey && !fits) return;
   e.preventDefault();
   zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
 }, { passive: false });
@@ -805,7 +814,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
   else if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomAt(1.25, null, null); }
   else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomAt(1 / 1.25, null, null); }
-  else if (e.key === '0') { e.preventDefault(); fitWidth(); }
+  else if (e.key === '0') { e.preventDefault(); fitPage(); }
 });
 
 // ---- Redaction ----
@@ -1169,7 +1178,7 @@ $('prev').onclick = () => go(curIdx - 1);
 $('next').onclick = () => go(curIdx + 1);
 $('zoom-in').onclick = () => zoomAt(1.25, null, null);
 $('zoom-out').onclick = () => zoomAt(1 / 1.25, null, null);
-$('fit').onclick = fitWidth;
+$('fit').onclick = fitPage;
 $('del').onclick = deleteSelected;
 $('apply').onclick = () => applyAll(true, autoRunUsed);
 
