@@ -115,9 +115,11 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
 .ov-path{font-family:Consolas,"Cascadia Mono",monospace;font-size:12.5px;color:var(--text) !important;user-select:all}
 .ov-note{padding:9px 12px;font-size:12px;line-height:1.5;color:var(--muted);border-top:1px solid var(--line)}
 #mode[hidden]{display:none}
+#wrap{position:relative}
+#mode{position:absolute;inset:0;z-index:50;display:grid;place-items:center;background:rgba(5,7,11,.66);backdrop-filter:blur(3px)}
 .mode-opts{display:flex;flex-direction:column;gap:10px;margin-top:14px}
-.mode-opts .btn{height:auto;padding:12px 14px;text-align:left;display:flex;flex-direction:column;align-items:flex-start;gap:4px;font-weight:600}
-.mode-opts .btn span{font-size:13px;font-weight:400}
+.mode-opts .btn{height:auto;width:100%;box-sizing:border-box;padding:12px 14px;text-align:left;white-space:normal;display:flex;flex-direction:column;align-items:flex-start;gap:4px;font-weight:600;line-height:1.35}
+.mode-opts .btn span{display:block;font-size:13px;font-weight:400;white-space:normal;line-height:1.45}
 .mode-opts .btn:disabled{opacity:.45;cursor:not-allowed}
 #mode-note{font-size:13px;color:#ffb3b3}
 </style></head><body>
@@ -208,16 +210,6 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     <button class="btn primary" id="b-plans-2" style="margin:0 auto"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Choose plans folder</button>
   </div>
   <canvas id="c" style="display:none"></canvas>
-</main>
-
-<footer>
-  <span id="msg">Loading...</span>
-  <div class="hint">
-    <span><kbd>Ctrl</kbd>+ wheel zoom</span>
-    <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> pages</span>
-    <span><kbd>Del</kbd> remove box</span>
-  </div>
-</footer>
 <div id="mode" class="ov" hidden>
   <div class="card">
     <div class="card-title">How do you want to redact this set?</div>
@@ -230,6 +222,16 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     <div class="card-foot"><span id="mode-note"></span></div>
   </div>
 </div>
+</main>
+
+<footer>
+  <span id="msg">Loading...</span>
+  <div class="hint">
+    <span><kbd>Ctrl</kbd>+ wheel zoom</span>
+    <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> pages</span>
+    <span><kbd>Del</kbd> remove box</span>
+  </div>
+</footer>
 <div class="contact">For assistance or questions about this page, please email <a href="mailto:bryan.webb@carync.gov">bryan.webb@carync.gov</a></div>
 
 <div id="ov" class="ov" hidden>
