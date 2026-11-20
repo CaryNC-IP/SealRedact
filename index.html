@@ -156,6 +156,7 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     <button class="btn" id="b-plans"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Choose Plans to be Redacted</button>
     <button class="btn" id="b-out"><svg viewBox="0 0 24 24"><path d="M12 5v10M8 11l4 4 4-4"/><path d="M4 19h16"/></svg>Output location</button>
     <button class="btn" id="b-model">Load seal model</button>
+    <button class="btn" id="b-auto">Redact all automatically</button>
     <div class="sep"></div>
     <button class="btn icon" id="prev" title="Previous page (Left arrow)"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
     <div class="pill" id="pos">Page 0 of 0</div>
@@ -724,18 +725,19 @@ async function redactPdf(bytes, boxesByPage, trainDir, stem, rel) {
   return { bytes: await out.save(), problems, numPages, boxCount };
 }
 
-async function applyAll(force) {
+async function applyAll(force, auto = false) {
   if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
-  saveCurrent(true);
+  saveCurrent(!auto);
   const unreviewed = pages.filter(p => !review.get(files[p.fi].rel + '|' + p.pno)?.reviewed).length;
   if (unreviewed && !force) {
     if (!confirm(`${unreviewed} page(s) have not been reviewed. Apply anyway?`)) { msg('Not applied.'); return; }
   }
   // One timestamp for the whole run, so the folder and every training file can be searched and copied together.
   const runStamp = stamp();
-  const runDir = await outDir.getDirectoryHandle('Redacted Documents ' + runStamp, { create: true });
+  const runDir = await outDir.getDirectoryHandle('Redacted Documents ' + (auto ? 'AUTO ' : '') + runStamp, { create: true });
   lastRunDir = runDir;
-  const trainDir = await runDir.getDirectoryHandle('Training ' + runStamp, { create: true });
+  // Automatic runs write no training data: their boxes have not been checked by a person.
+  const trainDir = auto ? null : await runDir.getDirectoryHandle('Training ' + runStamp, { create: true });
   const logRows = [['timestamp', 'source', 'source_sha256', 'output', 'output_sha256', 'pages', 'boxes', 'status', 'problems']];
   const ts = new Date().toISOString();
   progStart(pages.length);
@@ -757,7 +759,7 @@ async function applyAll(force) {
     await writeFile(runDir, stem + '_REDACTED.pdf', result.bytes);
     const outDigest = await sha256Hex(result.bytes);
     const record = {
-      source: f.rel, sha256: srcDigest, pages: result.numPages,
+      mode: auto ? 'automatic, no page review' : 'reviewed by a person', source: f.rel, sha256: srcDigest, pages: result.numPages,
       redacted_at: ts, output: stem + '_REDACTED.pdf', output_sha256: outDigest,
       boxes: boxesByPage, boxes_applied: result.boxCount,
       verification: status, problems: result.problems,
@@ -775,6 +777,37 @@ async function applyAll(force) {
   }
 }
 
+// Redacts every page using the model's boxes, with no page-by-page review.
+// Pages a person has reviewed, or already marked by hand, keep their boxes.
+// Output goes to a folder named "AUTO", with no training data.
+async function autoRedactAll() {
+  if (!plansDir || !pages.length) { msg('Choose a plans folder first.'); return; }
+  if (!(window.sealDetect && window.sealDetect.isLoaded())) { msg('Load the seal model first.'); return; }
+  const ok = confirm(`Redact all ${pages.length} page(s) automatically?\n\n` +
+    'No one will review these pages before they are redacted. Only the model\'s boxes will be applied. ' +
+    'The output goes to a new folder named AUTO. Your original files are not changed. ' +
+    'Check the output before releasing it.');
+  if (!ok) { msg('Automatic redaction cancelled.'); return; }
+  try {
+    saveCurrent(false);
+    for (let i = 0; i < pages.length; i++) {
+      const { fi, pno } = pages[i];
+      const e = entryFor(fi, pno);
+      msg(`Finding seals: ${files[fi].name}, page ${pno} (${i + 1} of ${pages.length})`);
+      if (e.reviewed || (e.boxes && e.boxes.length)) continue;
+      const doc = await getDoc(fi);
+      const page = await doc.getPage(pno);
+      e.boxes = (await window.sealDetect.detectOnPage(page)).map(b => b.slice());
+    }
+    msg('Redacting all pages automatically...');
+    await applyAll(true, true);
+  } catch (err) {
+    console.error(err);
+    msg('Automatic redaction stopped: ' + err.message);
+  }
+}
+
+$('b-auto').onclick = autoRedactAll;
 $('b-plans').onclick = choosePlans;
 $('b-plans-2').onclick = choosePlans;
 $('b-out').onclick = chooseOutput;
