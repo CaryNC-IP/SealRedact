@@ -46,10 +46,16 @@ header{background:linear-gradient(180deg,#171c26,#131720);border-bottom:1px soli
 .pill{height:34px;display:inline-flex;align-items:center;padding:0 12px;border-radius:9px;
   background:var(--panel-2);border:1px solid var(--line);color:var(--muted);font-variant-numeric:tabular-nums;min-width:82px;justify-content:center}
 .pill b{color:var(--text);font-weight:600;margin:0 4px}
-#b-plans,#b-out{background:#bfdbfe;border-color:#93c5fd;color:#1e3a8a;box-shadow:0 1px 2px rgba(30,58,138,.12)}
-#b-plans:hover,#b-out:hover{background:#93c5fd;border-color:#60a5fa}
-#prev,#next{background:#d67046;color:#fff;border-color:#d67046}
-#prev:hover,#next:hover{background:#bd5f38;border-color:#bd5f38}
+/* Palette: Civic Blue for the main action, Cary orange for the final lock-in, outline for everything else. */
+#b-plans{background:#2F6FBF;border-color:#2F6FBF;color:#fff;box-shadow:0 4px 14px rgba(47,111,191,.35)}
+#b-plans:hover{background:#2a64ab;border-color:#2a64ab}
+#b-out,#b-auto{background:transparent;border-color:#2F4A70;color:#C9D6E8;box-shadow:none}
+#b-out:hover,#b-auto:hover{background:rgba(47,111,191,.14);border-color:#2F6FBF;color:#E6ECF5}
+#prev,#next{background:#BFDBFE;color:#1E3A8A;border-color:#93C5FD}
+#prev:hover,#next:hover{background:#93C5FD;border-color:#60a5fa}
+#apply{background:#D67046;border-color:#D67046;color:#14100B;font-weight:700;box-shadow:0 6px 18px rgba(214,112,70,.3),0 1px 0 rgba(255,255,255,.25) inset}
+#apply:hover{background:#bd5f38;border-color:#bd5f38;color:#14100B}
+#mode-semi{border:1.5px solid #2F6FBF;background:rgba(47,111,191,.16)}
 .chip{display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border-radius:999px;
   background:#101420;border:1px solid var(--line);color:var(--muted);font-size:12px;max-width:100%;overflow:hidden}
 .chip i{font-style:normal;color:#6f7a8e}
@@ -170,7 +176,7 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     </div>
     <button class="btn" id="b-plans"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Choose Plans to be Redacted</button>
     <button class="btn" id="b-out"><svg viewBox="0 0 24 24"><path d="M12 5v10M8 11l4 4 4-4"/><path d="M4 19h16"/></svg>Output location</button>
-    <button class="btn" id="b-auto" style="background:#90EE90;border-color:#90EE90;color:#000">Find seals automatically</button>
+    <button class="btn" id="b-auto">Find seals automatically</button>
     <div class="sep"></div>
     <button class="btn icon" id="prev" title="Previous page (Left arrow)"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
     <div class="pill" id="pos">Page 0 of 0</div>
@@ -198,14 +204,15 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     <ol class="steps">
       <li><b>Seal model.</b> The model loads automatically when the page opens. If the status line says it was not found, automatic detection is off and you can still redact by hand.</li>
       <li><b>Choose the plans folder.</b> Pick the folder with the PDF plans. Redacted copies go into a new folder inside it unless you choose an output location.</li>
-      <li><b>Pick how you want to work:</b>
+      <li><b>Pick how you want to redact the set.</b> A popup asks you to choose one option. The choice applies to this plans folder.
         <ul class="modes">
-          <li><b>Manual:</b> you draw every box. Drag on a page to draw, drag a box to move it, and press Delete to remove the selected box.</li>
-          <li><b>Pre-marked, with review:</b> with the model loaded, each page is marked as you open it. Check every box, then click <b>Lock in Redactions</b>.</li>
-          <li><b>Find seals automatically (green):</b> marks seals on every page. Nothing is locked yet. Review and fix the pages, then click <b>Lock in Redactions</b>.</li>
+          <li><b>Fully manual:</b> you draw every box yourself. Drag on a page to draw, drag a box to move it, and press Delete to remove the selected box.</li>
+          <li><b>Semi-automatic:</b> the model marks each page as you open it. Check every box before you lock in.</li>
+          <li><b>Fully automatic:</b> the model marks seals on every page. Nothing is locked yet. Review the pages, add or remove boxes, then lock in.</li>
         </ul>
+        The <b>Find seals automatically</b> button in the toolbar does the same as Fully automatic.
       </li>
-      <li><b>Lock in.</b> <b>Lock in Redactions</b> writes new redacted PDFs with the boxes you see. Your original files are never changed.</li>
+      <li><b>Review, then lock in.</b> Check each page. <b>Remove Redaction Box</b> deletes the selected box. <b>Lock in Redactions</b> writes new redacted PDFs with the boxes you see. Your original files are never changed.</li>
     </ol>
     <p class="tip">Arrow keys move between pages. Ctrl plus the mouse wheel zooms. Each output is checked to confirm its boxes are solid black before it is saved.</p>
     <button class="btn primary" id="b-plans-2" style="margin:0 auto"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Choose plans folder</button>
@@ -218,7 +225,7 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
     <div class="mode-opts">
       <button class="btn" id="mode-manual">Fully manual<span>You draw every box yourself.</span></button>
       <button class="btn" id="mode-semi">Semi-automatic<span>The model marks each page as you open it. You check every box before applying.</span></button>
-      <button class="btn" id="mode-auto" style="background:#90EE90;border-color:#90EE90;color:#000">Fully automatic<span>Marks seals on every page. You review the pages, then click Lock in Redactions.</span></button>
+      <button class="btn" id="mode-auto">Fully automatic<span>Marks seals on every page. You review the pages, then click Lock in Redactions.</span></button>
     </div>
     <div class="card-foot"><span id="mode-note"></span></div>
   </div>
@@ -994,7 +1001,7 @@ function rainFrame(t) {
   const dt = Math.min(0.05, (t - rainLast) / 1000 || 0);
   rainLast = t;
   rctx.clearRect(0, 0, innerWidth, innerHeight);
-  rctx.strokeStyle = '#bef264';
+  rctx.strokeStyle = '#2F6FBF';   // Civic Blue
   rctx.lineCap = 'round';
   for (const d of rainDrops) {
     d.y += d.v * dt;
