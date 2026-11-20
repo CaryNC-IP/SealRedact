@@ -178,6 +178,7 @@ body > :not(#rain):not(#ov){position:relative;z-index:1}
   <div class="row" style="margin-top:8px">
     <div class="chip"><i class="chip-dot" id="dot-plans"></i><i>Plans</i><span id="p-plans">none chosen</span></div>
     <div class="chip"><i class="chip-dot" id="dot-out"></i><i>Output</i><span id="p-out">not set</span></div>
+    <div class="chip"><i class="chip-dot" id="dot-rev"></i><i>Reviewed</i><span id="p-rev">0 of 0</span></div>
   </div>
 </header>
 
@@ -308,11 +309,11 @@ function progDraw() {
   }
   $('ov-eta').textContent = eta;
 }
-function progStart(total) {
+function progStart(total, title = 'Applying redactions') {
   prog = { active: true, total, done: 0, stamps: [], started: performance.now() };
   fill.className = 'bar-fill';
   fill.style.width = '0%';
-  $('ov-title').textContent = 'Applying redactions';
+  $('ov-title').textContent = title;
   $('ov-title').className = 'card-title';
   $('ov-file').textContent = 'Starting...';
   $('ov-close').hidden = true;
@@ -560,6 +561,7 @@ async function show(i) {
   $('pos').innerHTML = `Page <b>${i + 1}</b> of ${pages.length}`;
   const reviewedCount = [...review.values()].filter(v => v.reviewed).length;
   msg(`${files[fi].name}, page ${pno}  |  ${e.reviewed ? 'reviewed' : 'not yet reviewed'}  |  ${reviewedCount} of ${pages.length} reviewed`);
+  updateReviewedChip();
   if (window.autoDetectPage) autoDetectPage(i);
 }
 
@@ -569,6 +571,14 @@ function saveCurrent(reviewed) {
   const e = entryFor(fi, pno);
   e.boxes = boxes.map(b => b.slice());
   e.reviewed = e.reviewed || reviewed;
+  updateReviewedChip();
+}
+
+// Header counter: pages a person has marked reviewed. It only goes up, and going back does not lower it.
+function updateReviewedChip() {
+  const done = pages.filter(p => { const e = review.get(files[p.fi].rel + '|' + p.pno); return e && e.reviewed; }).length;
+  $('p-rev').textContent = `${done} of ${pages.length}`;
+  $('dot-rev').classList.toggle('on', done > 0);
 }
 
 async function go(i) {
@@ -807,20 +817,22 @@ async function autoRedactAll() {
   if (!ok) { msg('Automatic redaction cancelled.'); return; }
   try {
     saveCurrent(false);
+    progStart(pages.length, 'Finding seals');
     for (let i = 0; i < pages.length; i++) {
       const { fi, pno } = pages[i];
       const e = entryFor(fi, pno);
-      msg(`Finding seals: ${files[fi].name}, page ${pno} (${i + 1} of ${pages.length})`);
-      if (e.reviewed || (e.boxes && e.boxes.length)) continue;
-      const doc = await getDoc(fi);
-      const page = await doc.getPage(pno);
-      e.boxes = (await window.sealDetect.detectOnPage(page)).map(b => b.slice());
+      progLabel(`${files[fi].name}, page ${pno}`);
+      if (!(e.reviewed || (e.boxes && e.boxes.length))) {
+        const doc = await getDoc(fi);
+        const page = await doc.getPage(pno);
+        e.boxes = (await window.sealDetect.detectOnPage(page)).map(b => b.slice());
+      }
+      progTick();
     }
-    msg('Redacting all pages automatically...');
     await applyAll(true, true);
   } catch (err) {
     console.error(err);
-    msg('Automatic redaction stopped: ' + err.message);
+    progFail(err);
   }
 }
 
