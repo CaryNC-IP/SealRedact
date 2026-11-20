@@ -152,6 +152,18 @@
     }
   }
 
+  // Runs the model on one pdf.js page and returns its seal boxes in PDF points.
+  async function detectOnPage(page) {
+    const pts = page.getViewport({ scale: 1 });
+    const lv = page.getViewport({ scale: DISPLAY_DPI / 72 });
+    const lc = mkCanvas(lv);
+    await page.render({ canvasContext: lc.getContext('2d'), viewport: lv }).promise;
+    const found = await detectOnCanvas(lc, pts.width, pts.height);
+    lc.width = 0;
+    lc.height = 0;
+    return found;
+  }
+
   // Button handler: the user picks the app folder that holds the model files.
   async function loadSealModel() {
     try {
@@ -170,7 +182,7 @@
   }
 
   window.autoDetectPage = autoDetectPage;
-  window.sealDetect = { loadModelFrom, detectOnCanvas, iou };
+  window.sealDetect = { loadModelFrom, detectOnCanvas, detectOnPage, iou, isLoaded: () => !!session };
   const btn = document.getElementById('b-model');
   if (btn) btn.addEventListener('click', loadSealModel);
 })();
