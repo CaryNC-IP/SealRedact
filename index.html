@@ -1246,8 +1246,8 @@ function newDrop(fromTop) {
     y: fromTop ? -20 : Math.random() * innerHeight,
     v: 40 + Math.random() * 90,            // pixels per second
     len: 4 + Math.random() * 10,           // streak length
-    a: 0.10 + Math.random() * 0.26,        // opacity, kept low so the page stays the focus
-    w: 0.6 + Math.random() * 0.6,          // thickness
+    a: 0.24 + Math.random() * 0.30,        // opacity, visible but still behind the page content
+    w: 0.8 + Math.random() * 0.8,          // thickness
   };
 }
 function sizeRain() {
@@ -1255,7 +1255,7 @@ function sizeRain() {
   rain.width = Math.round(innerWidth * dpr);
   rain.height = Math.round(innerHeight * dpr);
   rctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const n = Math.round(innerWidth * innerHeight / 4000);   // density scales with window size
+  const n = Math.round(innerWidth * innerHeight / 2800);   // density scales with window size
   rainDrops = Array.from({ length: n }, () => newDrop(false));
 }
 function rainFrame(t) {
