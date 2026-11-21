@@ -273,10 +273,12 @@ body > :not(#rain):not(#ov):not(#review-note){position:relative;z-index:1}
       <span id="ov-eta">Estimating time left...</span>
     </div>
     <div class="ov-list" id="ov-list" hidden></div>
+    <div class="ov-note" id="ov-ask" hidden></div>
     <div class="card-foot">
       <button class="btn" id="ov-stop" hidden>Stop and Resume Later</button>
       <button class="btn primary" id="ov-resume" hidden>Resume</button>
-      <button class="btn primary" id="ov-close" hidden>Close</button>
+      <button class="btn" id="ov-close" hidden>Close</button>
+      <button class="btn primary" id="ov-new" hidden>Start a New Redaction</button>
     </div>
   </div>
 </div>
@@ -368,6 +370,8 @@ function progStart(total, title = 'Applying redactions') {
   $('ov-file').textContent = 'Starting...';
   $('ov-close').hidden = true;
   $('ov-close').textContent = 'Close';
+  $('ov-new').hidden = true;
+  $('ov-ask').hidden = true;
   $('ov-resume').hidden = true;
   const stopBtn = $('ov-stop');
   stopBtn.hidden = false;
@@ -399,6 +403,11 @@ function progFinish(name) {
   $('ov-file').textContent = `Saved to "${name}"`;
   $('ov-eta').textContent = `Took ${fmtDur((performance.now() - prog.started) / 1000)}`;
   $('ov-close').hidden = false;
+  $('ov-close').textContent = 'Keep Reviewing This PDF';
+  $('ov-ask').textContent = 'Start a New Redaction clears this PDF and returns you to the start screen. ' +
+    'Keep Reviewing This PDF closes this box and leaves the flattened PDF on screen.';
+  $('ov-ask').hidden = false;
+  $('ov-new').hidden = false;
   showOutputList();
   msg(`Done. Saved to "${name}".`);
 }
@@ -411,6 +420,8 @@ function progFail(e, onResume) {
   $('ov-file').textContent = e.message;
   $('ov-eta').textContent = onResume ? 'Resume picks up at the file or page that failed.' : '';
   $('ov-close').textContent = onResume ? 'Cancel' : 'Close';
+  $('ov-new').hidden = true;
+  $('ov-ask').hidden = true;
   $('ov-close').hidden = false;
   const resume = $('ov-resume');
   resume.hidden = !onResume;
@@ -424,6 +435,7 @@ $('ov-close').onclick = () => {
   applyJob = null; autoJob = null; runBusy = false;
 };
 $('review-ok').onclick = () => { $('review-note').hidden = true; };
+$('ov-new').onclick = startNewRedaction;
 $('ov-stop').onclick = () => {
   stopRequested = true;
   const b = $('ov-stop');
@@ -607,6 +619,25 @@ async function chooseOutput() {
 }
 
 // ---- Page review ----
+// After a finished run: clears the PDF just redacted and returns to the start screen.
+// The redacted files stay in the output folder; only the on-screen session is cleared.
+function startNewRedaction() {
+  ov.hidden = true;
+  applyJob = null; autoJob = null; runBusy = false;
+  docCache.forEach(d => { try { d.destroy(); } catch (e) { console.warn(e); } });
+  docCache = new Map();
+  plansDir = null; outDir = null;
+  files = []; pages = []; review = new Map();
+  curIdx = -1; curPage = null; pageCanvas = null;
+  boxes = []; sel = -1; drag = null;
+  modeChoice = null; lastRunDir = null;
+  setChip('dot-plans', 'p-plans', false, 'none chosen');
+  setChip('dot-out', 'p-out', false, 'not set');
+  updateReviewedChip();
+  modeWait(false);
+  showEmpty(true);
+  msg('Choose a plans folder to start a new redaction.');
+}
 function showEmpty(on) {
   $('empty').style.display = on ? '' : 'none';   // '' uses the normal stacked layout
   c.style.display = on ? 'none' : 'block';
