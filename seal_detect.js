@@ -3,13 +3,13 @@
 // The reviewer still checks every box before anything is redacted.
 //
 // Reads these files from the app folder the user picks (Load seal model button):
-//   seal_v3.onnx, ort.wasm.min.js, ort-wasm-simd-threaded.wasm
+//   seal_v4.onnx, ort.wasm.min.js, ort-wasm-simd-threaded.wasm
 // Uses these globals from SealRedact.html: DISPLAY_DPI, mkCanvas, msg, pages,
 // entryFor, curPage, curIdx, boxes, sel, draw.
 
 (function () {
   const MODEL_SIZE = 960;     // the model was trained at this input size
-  const DETECT_CONF = 0.05;   // low on purpose: favor catching seals, reviewer removes false alarms
+  const DETECT_CONF = 0.10;   // chosen from the validation sweep: keeps every seal the model found at 0.05, with fewer false alarms
   const NMS_IOU = 0.7;        // overlap rule for merging duplicate detections (Ultralytics default)
   const PAD_VALUE = 114;      // grey padding, same as Ultralytics letterbox
 
@@ -55,7 +55,7 @@
     ort.env.wasm.wasmBinary = wasmBytes;
     ort.env.wasm.numThreads = 1;   // the page is not cross-origin isolated, so no threads
     ort.env.wasm.proxy = false;
-    session = await ort.InferenceSession.create(await readBytes('seal_v3.onnx'), {
+    session = await ort.InferenceSession.create(await readBytes('seal_v4.onnx'), {
       executionProviders: ['wasm'],
     });
     inputName = session.inputNames[0];
